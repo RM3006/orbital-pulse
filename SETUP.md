@@ -7,12 +7,12 @@ uv sync --locked
 uv run ruff check .
 uv run ruff format --check .
 uv run pyright
-uv run pytest -m "not integration and not live" --basetemp data/test-tmp
+uv run pytest -m "not integration and not live" --basetemp .pytest-tmp
 uv run python -m launch_atlas --help
 uv run python -m launch_atlas doctor --offline
 ```
 
-Those commands work in PowerShell and standard Linux shells. `data/test-tmp` is reserved for pytest's temporary files and may be cleared by pytest. Do not put project data in that subdirectory. Tests import the installed package; no sys.path manipulation or PYTHONPATH is required. Offline tests block socket connections. `integration`/`live` are registered marker reservations; no warehouse integration or live API test runs in default CI.
+Those commands work in PowerShell and standard Linux shells. `.pytest-tmp` is reserved for pytest's temporary files and may be cleared by pytest. Do not put project data there. Its parent is the existing checkout root, so a fresh checkout does not require a pre-created data directory. Tests import the installed package; no sys.path manipulation or PYTHONPATH is required. Offline tests block socket connections. `integration`/`live` are registered marker reservations; no warehouse integration or live API test runs in default CI.
 
 Reproduce a genuine saved 1957 slice without network:
 

@@ -22,7 +22,7 @@ uv sync --locked
 uv run ruff check .
 uv run ruff format --check .
 uv run pyright
-uv run pytest -m "not integration and not live" --basetemp data/test-tmp
+uv run pytest -m "not integration and not live" --basetemp .pytest-tmp
 uv run python -m launch_atlas doctor --offline
 ```
 

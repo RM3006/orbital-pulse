@@ -27,6 +27,6 @@ jobs:
       - run: uv run --no-sync ruff check .
       - run: uv run --no-sync ruff format --check .
       - run: uv run --no-sync pyright
-      - run: uv run --no-sync pytest -m "not integration and not live" --basetemp data/test-tmp
+      - run: uv run --no-sync pytest -m "not integration and not live" --basetemp .pytest-tmp
       - run: uv run --no-sync python -m launch_atlas doctor --offline
       - run: uv build --wheel
