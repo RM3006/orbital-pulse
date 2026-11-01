@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "space-launch-atlas"
+version = "0.1.0"
+description = "Replayable, provenance-aware public launch-data ingestion"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+dependencies = [
+  "httpx>=0.28,<0.29",
+  "pydantic>=2.12,<3",
+  "polars>=1.35,<2",
+  "tzdata>=2025.2; sys_platform == 'win32'",
+]
+
+[project.scripts]
+launch-atlas = "launch_atlas.cli:main"
+
+[dependency-groups]
+dev = ["pytest>=8.4,<10", "ruff>=0.14,<1", "pyright>=1.1.407,<2"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pipelines/launch_atlas"]
+
+[tool.uv]
+cache-dir = ".uv-cache"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pyright]
+include = ["pipelines", "tests", "scripts"]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = '-ra -m "not integration and not live"'
+markers = ["integration: warehouse integration (not yet implemented)", "live: explicit public API access"]

@@ -1,0 +1,32 @@
+name: Local pipeline checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: Python 3.12 / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      # Tag SHAs verified against upstream on 2026-11-01.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          version: "0.11.17"
+          enable-cache: true
+      - run: uv sync --locked --python 3.12
+      - run: uv run --no-sync ruff check .
+      - run: uv run --no-sync ruff format --check .
+      - run: uv run --no-sync pyright
+      - run: uv run --no-sync pytest -m "not integration and not live" --basetemp data/test-tmp
+      - run: uv run --no-sync python -m launch_atlas doctor --offline
+      - run: uv build --wheel

@@ -1,0 +1,172 @@
+{
+  "probe_http_requests": 8,
+  "evidence": [
+    {
+      "source": "ll2",
+      "api_version": "2.3.0",
+      "endpoint": "/2.3.0/json",
+      "query": {},
+      "observed_at_utc": "2026-11-01T16:52:28.412407+00:00",
+      "http_status": 200,
+      "content_type": "application/json",
+      "retry_after": null,
+      "sha256": "c58b7e71db6c0a594887683ff8b89eaaa604fbaf08cf4bb0d7def285a3a7cab5",
+      "artifact": "data/source-spike/schema.json.gz"
+    },
+    {
+      "source": "ll2",
+      "api_version": "2.3.0",
+      "endpoint": "/2.3.0/launches/previous/",
+      "query": {
+        "limit": [
+          "2"
+        ],
+        "mode": [
+          "normal"
+        ],
+        "ordering": [
+          "net"
+        ],
+        "include_suborbital": [
+          "false"
+        ]
+      },
+      "observed_at_utc": "2026-11-01T16:52:36.025053+00:00",
+      "http_status": 200,
+      "content_type": "application/json",
+      "retry_after": null,
+      "sha256": "bde5ccd1317faf3aa68506be31edf36b677bfa6732e16f2900067ba685c53e48",
+      "artifact": "data/source-spike/historical.json.gz"
+    },
+    {
+      "source": "ll2",
+      "api_version": "2.3.0",
+      "endpoint": "/2.3.0/launches/previous/",
+      "query": {
+        "limit": [
+          "3"
+        ],
+        "mode": [
+          "detailed"
+        ],
+        "ordering": [
+          "-net"
+        ],
+        "include_suborbital": [
+          "false"
+        ]
+      },
+      "observed_at_utc": "2026-11-01T16:52:36.611921+00:00",
+      "http_status": 200,
+      "content_type": "application/json",
+      "retry_after": null,
+      "sha256": "5679d09b876a5bfbf9fd1222d51a6172f42c382bd991808e75feb5e493a58179",
+      "artifact": "data/source-spike/recent.json.gz"
+    },
+    {
+      "source": "ll2",
+      "api_version": "2.3.0",
+      "endpoint": "/2.3.0/launches/upcoming/",
+      "query": {
+        "limit": [
+          "10"
+        ],
+        "mode": [
+          "detailed"
+        ],
+        "ordering": [
+          "net"
+        ],
+        "include_suborbital": [
+          "false"
+        ],
+        "net__gte": [
+          "2026-11-01T00:00:00Z"
+        ],
+        "net__lte": [
+          "2027-01-30T00:00:00Z"
+        ]
+      },
+      "observed_at_utc": "2026-11-01T16:52:39.352243+00:00",
+      "http_status": 200,
+      "content_type": "application/json",
+      "retry_after": null,
+      "sha256": "55f14df0a9a655cb97968f335c6e68bff477e0017d86bb0ea302fd27ccedb654",
+      "artifact": "data/source-spike/upcoming.json.gz"
+    },
+    {
+      "source": "ll2",
+      "api_version": "2.3.0",
+      "endpoint": "/2.3.0/config/launch_statuses/",
+      "query": {
+        "limit": [
+          "100"
+        ]
+      },
+      "observed_at_utc": "2026-11-01T16:52:43.603936+00:00",
+      "http_status": 200,
+      "content_type": "application/json",
+      "retry_after": null,
+      "sha256": "920effbba0419853b7bb61cf8d9dde3736805df70c7091a1dfebb7c593160681",
+      "artifact": "data/source-spike/statuses.json.gz"
+    },
+    {
+      "source": "ll2",
+      "api_version": "2.3.0",
+      "endpoint": "/2.3.0/launches/",
+      "query": {
+        "limit": [
+          "1"
+        ],
+        "mode": [
+          "normal"
+        ],
+        "include_suborbital": [
+          "false"
+        ],
+        "last_updated__gte": [
+          "2099-01-01T00:00:00Z"
+        ],
+        "ordering": [
+          "last_updated"
+        ]
+      },
+      "observed_at_utc": "2026-11-01T16:52:44.091578+00:00",
+      "http_status": 200,
+      "content_type": "application/json",
+      "retry_after": null,
+      "sha256": "0595424161ea863805d9b92c0e52d7aa1e3c46ec58cd8f0d6933759006a5fb74",
+      "artifact": "data/source-spike/updated_filter.json.gz"
+    },
+    {
+      "source": "ll2",
+      "api_version": "2.3.0",
+      "endpoint": "/2.3.0/launches/previous/",
+      "query": {
+        "limit": [
+          "1"
+        ],
+        "mode": [
+          "normal"
+        ],
+        "ordering": [
+          "-net"
+        ],
+        "include_suborbital": [
+          "false"
+        ]
+      },
+      "observed_at_utc": "2026-11-01T16:52:44.389023+00:00",
+      "http_status": 200,
+      "content_type": "application/json",
+      "retry_after": null,
+      "sha256": "6a4a88d6131f844c1e6f3c847e69db0a0fbebcd3591766cebb55b45e6aacdfd9",
+      "artifact": "data/source-spike/recent_normal.json.gz"
+    }
+  ],
+  "throttle_observation": {
+    "your_request_limit": 15,
+    "limit_frequency_secs": 3600,
+    "current_use_at_probe_start": 3
+  }
+}

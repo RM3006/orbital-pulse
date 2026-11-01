@@ -1,0 +1,121 @@
+{
+  "run_id": "live-upcoming-20261101",
+  "source": "ll2",
+  "api_version": "2.3.0",
+  "requests_total": 3,
+  "invocations": [
+    {
+      "budget": 2,
+      "ended_at_utc": "2026-11-01T17:01:22.801658+00:00",
+      "requests": 2,
+      "started_at_utc": "2026-11-01T17:00:22.488559+00:00"
+    },
+    {
+      "budget": 1,
+      "ended_at_utc": "2026-11-01T17:04:20.328534+00:00",
+      "requests": 1,
+      "started_at_utc": "2026-11-01T17:04:16.272890+00:00"
+    }
+  ],
+  "complete": true,
+  "pages": [
+    {
+      "endpoint": "/2.3.0/launches/upcoming/",
+      "query": {
+        "include_suborbital": [
+          "false"
+        ],
+        "limit": [
+          "100"
+        ],
+        "mode": [
+          "detailed"
+        ],
+        "net__gte": [
+          "2026-11-01T17:00:22.414704+00:00"
+        ],
+        "net__lt": [
+          "2027-01-30T17:00:22.414704+00:00"
+        ],
+        "ordering": [
+          "net"
+        ]
+      },
+      "observed_at_utc": "2026-11-01T17:01:08.584296+00:00",
+      "http_status": 200,
+      "sha256": "70194129897e3a586e11fb28453b53813b7a1f748e0fb4af20c29817529ac980",
+      "records": 100,
+      "source_count": 106,
+      "artifact": "raw/ll2/live-upcoming-20261101/response-0002-70194129897e3a58.json.gz"
+    },
+    {
+      "endpoint": "/2.3.0/launches/upcoming/",
+      "query": {
+        "include_suborbital": [
+          "false"
+        ],
+        "limit": [
+          "100"
+        ],
+        "mode": [
+          "detailed"
+        ],
+        "net__gte": [
+          "2026-11-01T17:00:22.414704+00:00"
+        ],
+        "net__lt": [
+          "2027-01-30T17:00:22.414704+00:00"
+        ],
+        "offset": [
+          "100"
+        ],
+        "ordering": [
+          "net"
+        ]
+      },
+      "observed_at_utc": "2026-11-01T17:04:16.277889+00:00",
+      "http_status": 200,
+      "sha256": "4e711ebee63c0dafe9243a65d39d4ba2f21ce752e09effe3ee0356e8a8f5c2c4",
+      "records": 6,
+      "source_count": 106,
+      "artifact": "raw/ll2/live-upcoming-20261101/response-0003-4e711ebee63c0daf.json.gz"
+    }
+  ],
+  "quality": {
+    "coverage": {
+      "explicit_suborbital_scope": 0,
+      "missing_precision": 0,
+      "missing_provider": 0,
+      "payload_completeness": "unknown; structured counts do not establish actual payload totals",
+      "unknown_orbital_scope": 19,
+      "with_stage_detail": 106
+    },
+    "extraction_complete": true,
+    "issues": [],
+    "kind": "live",
+    "parser_version": "1",
+    "passed": true,
+    "rows": {
+      "bridge_configuration_family": 36,
+      "dim_launch_site": 19,
+      "dim_pad": 32,
+      "dim_provider": 22,
+      "dim_vehicle_configuration": 35,
+      "dim_vehicle_family": 24,
+      "fact_launch_attempt": 0,
+      "launch_observation": 106,
+      "launch_record_current": 106,
+      "stage_flight": 27
+    },
+    "run_id": "live-upcoming-20261101",
+    "sample_metrics": {
+      "classified_outcomes": 0,
+      "failure": 0,
+      "orbital_attempts": 0,
+      "partial_failure": 0,
+      "success": 0,
+      "success_share": null,
+      "unresolved": 0
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "run_id": "live-history-20261101",
+  "source": "ll2",
+  "api_version": "2.3.0",
+  "artifact": "raw/ll2/live-history-20261101/response-0001-67fefbdff8ac4211.json.gz",
+  "content_type": "application/json",
+  "endpoint": "/2.3.0/launches/previous/",
+  "http_status": 200,
+  "next": null,
+  "observed_at_utc": "2026-11-01T17:04:49.556708+00:00",
+  "parser_version": "1",
+  "query": {
+    "include_suborbital": [
+      "false"
+    ],
+    "limit": [
+      "5"
+    ],
+    "mode": [
+      "detailed"
+    ],
+    "net__gte": [
+      "1957-01-01T00:00:00Z"
+    ],
+    "net__lt": [
+      "1958-01-01T00:00:00Z"
+    ],
+    "ordering": [
+      "net"
+    ]
+  },
+  "records": 3,
+  "retry_after": null,
+  "sha256": "67fefbdff8ac421158bba4f4d8e003936e2bacf5816c67e75d2521dac43a35ba",
+  "source_count": 3,
+  "url": "https://ll.thespacedevs.com/2.3.0/launches/previous/?limit=5&mode=detailed&include_suborbital=false&ordering=net&net__gte=1957-01-01T00%3A00%3A00Z&net__lt=1958-01-01T00%3A00%3A00Z"
+}
