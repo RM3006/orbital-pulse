@@ -1,0 +1,97 @@
+{
+  "verified_at_utc": "2026-11-07T09:24:31.773662+00:00",
+  "api": "The Space Devs Launch Library 2 production API 2.3.0",
+  "plans": {
+    "p2-refresh-20261107": {
+      "type": "refresh",
+      "frozen_as_of_utc": "2026-11-07T09:08:20.459707+00:00",
+      "status": "complete",
+      "requests": 7,
+      "windows": {
+        "recent": {"run_id": "p2-refresh-20261107-recent", "records": 22, "pages": 1},
+        "upcoming": {"run_id": "p2-refresh-20261107-upcoming", "source_count": 250, "pages": 5, "page_size": 50},
+        "corrections": {"run_id": "p2-refresh-20261107-corrections-001", "records": 37, "pages": 1}
+      }
+    },
+    "p2-history-1957-2026": {
+      "type": "backfill",
+      "status": "in_progress",
+      "initial_annual_windows": 140,
+      "committed": 2,
+      "pending": 138,
+      "reconciled_window": "1957",
+      "pass_1_run_id": "p2-history-1957-2026-1957-pass-1",
+      "pass_2_run_id": "p2-history-1957-2026-1957-pass-2",
+      "pass_response_sha256": "a84113882e0f31d240f077b2c6259923db05017f12fb0e539a765c5141a90111",
+      "records_per_pass": 3
+    }
+  },
+  "state_after_refresh_and_1957": {
+    "revision": 7,
+    "complete_live_acquisitions": 7,
+    "current_launch_records": 287,
+    "record_sightings": 424,
+    "semantic_observation_events": 308,
+    "conflicts": 0,
+    "accepted_request_evidence_rows": 9
+  },
+  "export": {
+    "quality_passed": true,
+    "launch_attempt_rows": 39,
+    "upcoming_schedule_rows": 179,
+    "upcoming_horizon_days": 90,
+    "as_of_utc": "2026-11-07T09:08:20.459707+00:00",
+    "upcoming_interval_basis_counts": {
+      "day": 5,
+      "hour": 6,
+      "minute": 6,
+      "month": 20,
+      "quarter": 13,
+      "year": 129
+    },
+    "coverage": {
+      "precision_supported": 250,
+      "unsupported_precision": 37,
+      "missing_precision": 4,
+      "unknown_orbital_scope": 24,
+      "upcoming_unsupported_precision": 33
+    },
+    "rebuild": {
+      "complete_live_runs_applied": 7,
+      "current_launch_records": 287,
+      "semantic_observation_events": 308,
+      "conflicts": 0,
+      "parquet_tables": 11,
+      "all_parquet_sha256_values_match_active": true
+    }
+  },
+  "bounded_filter_probe": {
+    "run_id": "correction-filter-verify-20261107",
+    "requests": 1,
+    "http_status": 200,
+    "endpoint": "/2.3.0/launches/previous/",
+    "parameters": {
+      "include_suborbital": "true",
+      "ordering": "-last_updated",
+      "last_updated__gte": "2026-11-06T09:07:00.694441+00:00",
+      "last_updated__lte": "2026-11-07T09:02:00.694441+00:00",
+      "limit": 1
+    },
+    "complete": false,
+    "merged_into_state": false,
+    "claim_limit": "The bounded query was accepted and returned a record; suborbital inclusion and complete filter behavior were not established."
+  },
+  "network_budget": {
+    "calls_during_phase2_verification": 10,
+    "breakdown": {"bounded_filter_probe": 1, "refresh": 7, "1957_two_pass": 2},
+    "last_request_utc": "2026-11-07T09:13:12.949009+00:00",
+    "note": "The incomplete filter probe is not included in the nine accepted SQLite request-evidence rows. The local rolling quota ledger is retained."
+  },
+  "limits": [
+    "Refresh source counts overlap across windows and are not additive distinct-launch totals.",
+    "The 90-day interval fact is a schedule-uncertainty view, not exact launch timing.",
+    "Historical acquisition is incomplete; 138 annual windows remain before any dense-window splits.",
+    "No worldwide completeness, reliability trend, reuse statistic, automated freshness SLA, cloud deployment or public release is claimed.",
+    "Remote GitHub CI and Linux validation have not run."
+  ]
+}

@@ -2,12 +2,14 @@
 
 | Phase | Actual status | Remaining exit work |
 |---|---|---|
-| 0 — API / architecture spike | Complete locally | Eight-request source probe; schema/status/shape/coverage evidence and architecture decisions recorded. Broader CLI run exposed missing-orbit and coarse-date limitations; conservative scope policy recorded. |
-| 1 — harness / local slice | Complete locally | Installable Python package, locked environment, CLI, raw/checkpoints, per-run normalized Parquet, offline replay and substantive tests. Windows verified; remote Linux/Windows CI is configured but has not run. |
-| 2 — history / observed changes | Not complete | Quota-aware full historical backfill, cross-run current state and semantic change history, immutable refresh windows/overlap, complete-window watermark, deletion/reclassification reconciliation, precision interval semantics and unknown-scope review. Current offset resume is a page checkpoint, not a guarantee against source movement. |
-| 3 — warehouse / releases | Proposed, account and budget gated | Compatible Dagster/dbt/BigQuery group, real nonempty SQL models and scratch-warehouse tests, read-only reporting identity, candidate validation + publication pointer and tested rollback. |
-| 4 — operating schedule | Not implemented | Same Dagster dependency chain under scheduled GitHub Actions, persisted state, freshness and failure visibility; verify real scheduled executions. |
-| 5 — dashboard / portfolio | Not started | Confirm Data Studio, build/test report and signed-out embedding; publication requires authorization. |
-| 6 — enrichment | Deferred | GCAT identifier crosswalk/coverage, then additional sources only for a defined question. |
+| 0 — API / architecture spike | Complete locally | Public LL2 behavior and scope/precision limitations recorded. |
+| 1 — harness / local slice | Complete locally | Installable CLI, locked environment, raw/checkpoints, per-run Parquet, offline replay and tests. Remote CI is configured but not observed running. |
+| 2 — history / observed changes | Local implementation operational; acquisition incomplete | Continue 138 pending annual windows from 1958 onward (including later split/reconcile work); review coverage and rerun deterministic rebuild validation. No claim of full-history completeness. |
+| 3 — warehouse / releases | Proposed, account and budget gated | Compatible Dagster/dbt/BigQuery group, nonempty SQL models and scratch-warehouse tests, read-only reporting identity, candidate validation + publication pointer and tested rollback. |
+| 4 — operating schedule | Not implemented | Same dependency chain under scheduled GitHub Actions, persisted state, freshness/failure visibility and verified scheduled executions. |
+| 5 — dashboard / portfolio | Not started | Confirm reporting product, build/test report and signed-out embedding; publication requires authorization. |
+| 6 — enrichment | Deferred | GCAT identifier crosswalk/coverage, then sources only for a defined question. |
 
-Immediate local next work: Phase 2 precision-period overlap and persistent observations, using cached upcoming records before spending more quota. Cloud credentials and spend are not blockers for that work. No full-history total, reliability trend, reuse statistic or running refresh SLA is claimed by the bootstrap.
+Phase 2 implementation includes cross-run transactional state, A→B→A observation events, per-window acquisition/reconciliation, shared refresh budget, precision interval overlap, immutable Parquet generations and offline rebuild. The exact design and acceptance criteria are in the [execution plan](docs/phase_2_execution_plan.md); live run evidence and its limits are in [phase2_verification.json](docs/phase2_verification.json).
+
+Next local action is to continue the metered public-source history backfill, beginning with 1958. Cloud credentials, spend and reporting-product decisions do not block that work. No full-history total, reliability trend, reuse statistic or refresh SLA is claimed.

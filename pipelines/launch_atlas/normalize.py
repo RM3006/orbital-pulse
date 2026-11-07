@@ -1,6 +1,5 @@
 """Normalize a run, preserving source grains; no warehouse or network dependency."""
 
-import json
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -8,9 +7,10 @@ from uuid import UUID
 import polars as pl
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-from launch_atlas.storage.local import digest
+from launch_atlas.observations import semantic_hash
+from launch_atlas.time_precision import schedule_interval
 
-PARSER_VERSION = "1"
+PARSER_VERSION = "2"
 TS = pl.Datetime("us", "UTC")
 
 
@@ -38,6 +38,10 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         "observed_at_utc": TS,
         "net_precision_id": pl.Int64,
         "net_precision_name": pl.String,
+        "schedule_earliest_utc": TS,
+        "schedule_latest_exclusive_utc": TS,
+        "interval_basis": pl.String,
+        "precision_supported": pl.Boolean,
         "window_start_utc": TS,
         "window_end_utc": TS,
         "source_status_id": pl.Int64,
@@ -120,57 +124,6 @@ def timestamp(value: str | None) -> datetime | None:
     return parsed.astimezone(UTC)
 
 
-def semantic_hash(record: dict[str, Any]) -> str:
-    """Ignore media, source all-time counters and update-time-only changes."""
-    provider = record.get("launch_service_provider") or {}
-    rocket = record.get("rocket") or {}
-    configuration = rocket.get("configuration") or {}
-    pad = record.get("pad") or {}
-    mission = record.get("mission") or {}
-    fields: dict[str, Any] = {
-        key: record.get(key)
-        for key in ("id", "name", "launch_designator", "net", "window_start", "window_end")
-    }
-    fields.update(
-        {
-            "status_id": (record.get("status") or {}).get("id"),
-            "precision_id": (record.get("net_precision") or {}).get("id"),
-            "provider_id": provider.get("id"),
-            "configuration_id": configuration.get("id"),
-            "pad_id": pad.get("id"),
-            "site_id": (pad.get("location") or {}).get("id"),
-            "mission_id": mission.get("id"),
-            "mission_type": mission.get("type"),
-            "orbit_id": (mission.get("orbit") or {}).get("id"),
-            "orbit_name": (mission.get("orbit") or {}).get("name"),
-            "stage_detail_available": "launcher_stage" in rocket,
-            "stages": [],
-            "payloads": rocket.get("payloads"),
-        }
-    )
-    for stage in rocket.get("launcher_stage") or []:
-        hardware, landing = stage.get("launcher") or {}, stage.get("landing") or {}
-        fields["stages"].append(
-            {
-                **{
-                    key: stage.get(key)
-                    for key in (
-                        "id",
-                        "reused",
-                        "launcher_flight_number",
-                        "previous_flight_date",
-                        "turn_around_time",
-                    )
-                },
-                "hardware_id": hardware.get("id"),
-                "placeholder": hardware.get("is_placeholder"),
-                "landing": {key: landing.get(key) for key in ("id", "attempt", "success")},
-            }
-        )
-    fields["stages"].sort(key=lambda stage: stage["id"])
-    return digest(json.dumps(fields, sort_keys=True, separators=(",", ":")).encode())
-
-
 def normalize(
     inputs: list[tuple[dict[str, Any], dict[str, Any]]],
 ) -> tuple[dict[str, pl.DataFrame], dict[str, Any]]:
@@ -219,6 +172,7 @@ def normalize(
         site = pad.get("location") or {}
         mission = record.get("mission") or {}
         precision = record.get("net_precision") or {}
+        interval = schedule_interval(launch.net, precision)
         status = launch.status.id
         outcome = {
             3: "success",
@@ -255,6 +209,10 @@ def normalize(
                 "observed_at_utc": observed,
                 "net_precision_id": precision.get("id"),
                 "net_precision_name": precision.get("name"),
+                "schedule_earliest_utc": interval.earliest_utc,
+                "schedule_latest_exclusive_utc": interval.latest_exclusive_utc,
+                "interval_basis": interval.interval_basis,
+                "precision_supported": interval.precision_supported,
                 "window_start_utc": timestamp(record.get("window_start")),
                 "window_end_utc": timestamp(record.get("window_end")),
                 "source_status_id": status,
@@ -422,6 +380,8 @@ def normalize(
         "coverage": {
             "missing_provider": launches.filter(pl.col("provider_id").is_null()).height,
             "missing_precision": launches.filter(pl.col("net_precision_id").is_null()).height,
+            "precision_supported": launches.filter(pl.col("precision_supported")).height,
+            "unsupported_precision": launches.filter(~pl.col("precision_supported")).height,
             "unknown_orbital_scope": launches.filter(
                 pl.col("scope_classification") == "unknown"
             ).height,

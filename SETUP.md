@@ -39,7 +39,24 @@ Resume that exact run, without changing its frozen source query:
 uv run python -m launch_atlas backfill --resume --run-id history-example --max-requests 2
 ```
 
-`--page-size` and time-window options do not replace a resumed run's saved query. Completed resume uses no network. `replay` always uses raw artifacts only. `refresh`, warehouse `validate` and `publish` are intentionally absent until their phases exist; help does not advertise stubs.
+`--page-size` and time-window options do not replace a resumed run's saved query. Completed resume uses no network. `replay` always uses raw artifacts only. Phase 2 adds frozen multi-window plans and persistent state:
+
+```powershell
+# Offline plan construction; choose a unique plan ID for each frozen plan
+uv run python -m launch_atlas plan-refresh --plan-id refresh-2026-11-07
+uv run python -m launch_atlas plan-backfill --plan-id history-1957-2026 --start-year 1957 --end-year 2026
+
+# Explicit live execution, resumable under one invocation and shared local quota budget
+uv run python -m launch_atlas run-plan --plan-id refresh-2026-11-07 --max-requests 8
+uv run python -m launch_atlas run-plan --plan-id history-1957-2026 --max-requests 8
+
+# Offline inspection, export, or rebuild into an empty separate directory
+uv run python -m launch_atlas state-status
+uv run python -m launch_atlas state-export
+uv run python -m launch_atlas rebuild-state --output-dir data/rebuild-check
+```
+
+See [operations](docs/operations.md) for frozen query semantics, pass/reconciliation rules, data layout, failure recovery and quota limits. Warehouse `validate`/`publish` remain absent; local Parquet generation validation is not publication.
 
 Configuration: .env.example documents actual environment variables. The application **does not automatically load .env files**. For example in PowerShell: `$env:LOCAL_DATA_DIR = './data'`; on Linux set/export the same variable. Only local mode and the verified production LL2 source are accepted. Free unauthenticated API access only; no token is read or required. Credentials, local state and raw data are ignored by Git. Supply a descriptive User-Agent, replacing the contact text with a real public project URL after one exists.
 

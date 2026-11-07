@@ -8,7 +8,18 @@ from pathlib import Path
 import polars as pl
 
 from launch_atlas.config import Settings
-from launch_atlas.pipeline import import_raw, ingest, replay, summary
+from launch_atlas.pipeline import (
+    import_raw,
+    ingest,
+    merge_run_state,
+    rebuild_state,
+    replay,
+    run_plan,
+    summary,
+)
+from launch_atlas.storage.exports import export_current
+from launch_atlas.storage.state import StateStore
+from launch_atlas.windows import create_backfill_plan, create_reconcile_plan, create_refresh_plan
 
 
 def parser() -> argparse.ArgumentParser:
@@ -54,6 +65,44 @@ def parser() -> argparse.ArgumentParser:
     import_command.add_argument(
         "--observed-at", required=True, help="Actual acquisition timestamp with timezone"
     )
+    state_merge = commands.add_parser(
+        "state-merge", help="Offline: explicitly merge one complete validated raw run to SQLite"
+    )
+    state_merge.add_argument("--run-id", required=True)
+    commands.add_parser("state-status", help="Offline persistent-state row counts")
+    commands.add_parser(
+        "state-export", help="Offline: validate and write a Parquet state generation"
+    )
+    plan_backfill = commands.add_parser(
+        "plan-backfill", help="Offline: freeze two historical passes into yearly windows"
+    )
+    plan_backfill.add_argument("--plan-id", required=True)
+    plan_backfill.add_argument("--start-year", type=int, default=1957)
+    plan_backfill.add_argument("--end-year", type=int)
+    plan_refresh = commands.add_parser(
+        "plan-refresh", help="Offline: freeze corrections, recent and upcoming windows"
+    )
+    plan_refresh.add_argument("--plan-id", required=True)
+    plan_reconcile = commands.add_parser(
+        "plan-reconcile", help="Offline: create another pass for unstable history windows"
+    )
+    plan_reconcile.add_argument("--parent-plan-id", required=True)
+    plan_reconcile.add_argument("--plan-id", required=True)
+    plan_runner = commands.add_parser(
+        "run-plan", help="Network: resume frozen windows under one invocation request budget"
+    )
+    plan_runner.add_argument("--plan-id", required=True)
+    plan_runner.add_argument("--max-requests", type=int, default=8)
+    rebuild = commands.add_parser(
+        "rebuild-state", help="Offline: rebuild SQLite and exports from retained complete raw runs"
+    )
+    rebuild.add_argument("--output-dir", type=Path, required=True)
+    rebuild.add_argument(
+        "--include-run-id",
+        action="append",
+        default=[],
+        help="Explicitly include an offline_import run; repeat for each curated import",
+    )
     import_command.add_argument(
         "--orbital-only",
         action="store_true",
@@ -62,7 +111,23 @@ def parser() -> argparse.ArgumentParser:
     )
     for command in (
         doctor,
-        *[commands.choices[name] for name in ("smoke", "backfill", "replay", "import-raw")],
+        *[
+            commands.choices[name]
+            for name in (
+                "smoke",
+                "backfill",
+                "replay",
+                "import-raw",
+                "state-merge",
+                "state-status",
+                "state-export",
+                "plan-backfill",
+                "plan-refresh",
+                "plan-reconcile",
+                "run-plan",
+                "rebuild-state",
+            )
+        ],
     ):
         command.add_argument(
             "--data-dir",
@@ -79,6 +144,8 @@ def main(argv: list[str] | None = None) -> int:
         overrides["data_dir"] = arguments.data_dir
     if arguments.command in ("smoke", "backfill"):
         overrides.update(max_requests=arguments.max_requests, page_size=arguments.page_size)
+    elif arguments.command == "run-plan":
+        overrides["max_requests"] = arguments.max_requests
     try:
         settings = Settings.from_env(**overrides)
         if arguments.command == "doctor":
@@ -104,6 +171,60 @@ def main(argv: list[str] | None = None) -> int:
             quality = replay(settings, arguments.run_id)
             print(json.dumps(quality, indent=2))
             return 0 if quality["passed"] else 1
+        if arguments.command == "state-status":
+            state = StateStore(settings.data_dir)
+            print(
+                json.dumps(
+                    {
+                        "revision": state.revision(),
+                        "coverage_cursors": state.coverage_cursors(),
+                        "plans": state.plan_summary(),
+                        **state.summary(),
+                    },
+                    indent=2,
+                )
+            )
+            return 0
+        if arguments.command == "state-export":
+            print(json.dumps(export_current(settings), indent=2))
+            return 0
+        if arguments.command == "rebuild-state":
+            result = rebuild_state(
+                settings, arguments.output_dir, include_run_ids=set(arguments.include_run_id)
+            )
+            print(json.dumps(result, indent=2))
+            return 0
+        if arguments.command == "state-merge":
+            result = merge_run_state(settings, arguments.run_id)
+            print(json.dumps(result, indent=2))
+            return 0
+        if arguments.command == "plan-backfill":
+            result = create_backfill_plan(
+                StateStore(settings.data_dir),
+                settings,
+                arguments.plan_id,
+                arguments.start_year,
+                arguments.end_year or datetime.now(UTC).year,
+            )
+            print(json.dumps(result, indent=2))
+            return 0
+        if arguments.command == "plan-refresh":
+            result = create_refresh_plan(StateStore(settings.data_dir), settings, arguments.plan_id)
+            print(json.dumps(result, indent=2))
+            return 0
+        if arguments.command == "plan-reconcile":
+            result = create_reconcile_plan(
+                StateStore(settings.data_dir),
+                settings,
+                arguments.parent_plan_id,
+                arguments.plan_id,
+            )
+            print(json.dumps(result, indent=2))
+            return 0
+        if arguments.command == "run-plan":
+            result = run_plan(settings, arguments.plan_id)
+            print(json.dumps(result, indent=2))
+            return 0 if result["complete"] else 2
         if arguments.command == "import-raw":
             manifest = import_raw(
                 settings, arguments.input, arguments.run_id, arguments.observed_at

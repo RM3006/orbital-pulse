@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 
 def digest(body: bytes) -> str:
@@ -15,7 +16,7 @@ def digest(body: bytes) -> str:
 
 def atomic_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
     with temporary.open("w", encoding="utf-8", newline="\n") as handle:
         json.dump(value, handle, indent=2, sort_keys=True, ensure_ascii=True)
         handle.flush()

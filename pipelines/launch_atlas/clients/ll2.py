@@ -29,6 +29,19 @@ class Page(BaseModel):
     results: list[dict[str, Any]]
 
 
+class RequestBudget:
+    """One cap shared by all clients and source components in an invocation."""
+
+    def __init__(self, limit: int):
+        self.limit = limit
+        self.used = 0
+
+    def reserve(self) -> None:
+        if self.used >= self.limit:
+            raise PauseRun("budget_stopped")
+        self.used += 1
+
+
 def safe_url(url: str, base_url: str) -> str:
     parsed = urlsplit(url)
     base = urlsplit(base_url)
@@ -60,8 +73,32 @@ def safe_url(url: str, base_url: str) -> str:
     query = parse_qs(parsed.query, keep_blank_values=True)
     if set(query) - allowed or any(len(values) != 1 for values in query.values()):
         raise SourceError("Unrecognized query parameter; credentials must never appear in URLs")
-    if query.get("include_suborbital") != ["false"] or query.get("mode") != ["detailed"]:
+    scope = query.get("include_suborbital")
+    if scope not in (["false"], ["true"]) or query.get("mode") != ["detailed"]:
         raise SourceError("Only explicitly orbital, detailed queries can feed this parser")
+    if scope == ["true"]:
+        if (
+            parsed.path != base.path + "launches/previous/"
+            or "last_updated__gte" not in query
+            or "last_updated__lte" not in query
+        ):
+            raise SourceError(
+                "Broadened scope is restricted to bounded previous-launch corrections"
+            )
+        try:
+            lower = datetime.fromisoformat(query["last_updated__gte"][0].replace("Z", "+00:00"))
+            upper = datetime.fromisoformat(query["last_updated__lte"][0].replace("Z", "+00:00"))
+            if (
+                lower.tzinfo is None
+                or upper.tzinfo is None
+                or upper <= lower
+                or (upper - lower).total_seconds() > 31 * 86400
+            ):
+                raise ValueError
+        except ValueError:
+            raise SourceError(
+                "Broadened-scope correction query must span at most 31 days"
+            ) from None
     try:
         if not 1 <= int(query.get("limit", ["0"])[0]) <= 100:
             raise ValueError
@@ -105,12 +142,13 @@ class LL2Client:
         store: LocalStore,
         *,
         transport: httpx.BaseTransport | None = None,
+        budget: RequestBudget | None = None,
         clock: Callable[[], float] = time.time,
         sleep: Callable[[float], None] = time.sleep,
     ):
         self.settings, self.store = settings, store
         self.clock, self.sleep = clock, sleep
-        self.used = 0
+        self.budget = budget or RequestBudget(settings.max_requests)
         self.http = httpx.Client(
             headers={"Accept": "application/json", "User-Agent": settings.user_agent},
             timeout=45,
@@ -121,8 +159,12 @@ class LL2Client:
     def close(self) -> None:
         self.http.close()
 
+    @property
+    def used(self) -> int:
+        return self.budget.used
+
     def reserve(self) -> None:
-        if self.used >= self.settings.max_requests:
+        if self.budget.used >= self.budget.limit:
             raise PauseRun("budget_stopped")
         path = self.store.root / "quota.json"
         ledger = read_json(path) if path.exists() else {"requests": [], "retry_at": 0}
@@ -134,26 +176,37 @@ class LL2Client:
             raise PauseRun("quota_stopped", min(requests) + 3600)
         requests.append(now)
         atomic_json(path, {"requests": requests, "retry_at": ledger["retry_at"]})
-        self.used += 1
+        self.budget.reserve()
 
     def fetch(
         self,
         url: str,
-        record: Callable[[httpx.Response | None, str, str], None],
+        record: Callable[[httpx.Response | None, str, str, str], None],
     ) -> Page:
         safe_url(url, self.settings.base_url)
         for attempt in range(3):
             self.reserve()
+            requested_at = datetime.fromtimestamp(self.clock(), UTC).isoformat()
             try:
                 response = self.http.get(url)
             except httpx.TransportError:
-                record(None, url, datetime.fromtimestamp(self.clock(), UTC).isoformat())
+                record(
+                    None,
+                    url,
+                    datetime.fromtimestamp(self.clock(), UTC).isoformat(),
+                    requested_at,
+                )
                 if attempt == 2:
                     raise SourceError("Transport failure after bounded retries") from None
                 self.sleep(2**attempt)
                 continue
             # Observation is receipt time; save raw evidence before parsing.
-            record(response, url, datetime.fromtimestamp(self.clock(), UTC).isoformat())
+            record(
+                response,
+                url,
+                datetime.fromtimestamp(self.clock(), UTC).isoformat(),
+                requested_at,
+            )
             if response.status_code == 429:
                 retry_at = self.clock() + retry_seconds(
                     response.headers.get("Retry-After"), self.clock()
