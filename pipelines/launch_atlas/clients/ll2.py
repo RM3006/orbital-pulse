@@ -169,14 +169,28 @@ class LL2Client:
         path = self.store.root / "quota.json"
         ledger = read_json(path) if path.exists() else {"requests": [], "retry_at": 0}
         now = self.clock()
+        if ledger.get("consecutive_failures", 0) >= 3:
+            raise SourceError("Three consecutive failed attempts; investigate before worker-resume")
         requests = [stamp for stamp in ledger["requests"] if stamp > now - 3600]
         if ledger["retry_at"] > now:
             raise PauseRun("throttled", ledger["retry_at"])
         if len(requests) >= 15:
             raise PauseRun("quota_stopped", min(requests) + 3600)
         requests.append(now)
-        atomic_json(path, {"requests": requests, "retry_at": ledger["retry_at"]})
+        ledger["requests"] = requests
+        atomic_json(path, ledger)
         self.budget.reserve()
+
+    def outcome(self, success: bool, reason: str = "") -> None:
+        """Persist a source-wide circuit across pages, invocation budgets and restarts."""
+        path = self.store.root / "quota.json"
+        ledger = read_json(path)
+        ledger["consecutive_failures"] = 0 if success else ledger.get("consecutive_failures", 0) + 1
+        ledger["last_outcome_at_utc"] = datetime.fromtimestamp(self.clock(), UTC).isoformat()
+        ledger["last_failure"] = None if success else reason
+        atomic_json(path, ledger)
+        if ledger["consecutive_failures"] >= 3:
+            raise SourceError("Three consecutive failed attempts; investigate before worker-resume")
 
     def fetch(
         self,
@@ -196,6 +210,7 @@ class LL2Client:
                     datetime.fromtimestamp(self.clock(), UTC).isoformat(),
                     requested_at,
                 )
+                self.outcome(False, "transport_error")
                 if attempt == 2:
                     raise SourceError("Transport failure after bounded retries") from None
                 self.sleep(2**attempt)
@@ -207,6 +222,18 @@ class LL2Client:
                 datetime.fromtimestamp(self.clock(), UTC).isoformat(),
                 requested_at,
             )
+            if response.status_code != 200:
+                if response.status_code in (429, 500, 502, 503, 504) and response.headers.get(
+                    "Retry-After"
+                ):
+                    path = self.store.root / "quota.json"
+                    ledger = read_json(path)
+                    ledger["retry_at"] = max(
+                        ledger.get("retry_at", 0),
+                        self.clock() + retry_seconds(response.headers["Retry-After"], self.clock()),
+                    )
+                    atomic_json(path, ledger)
+                self.outcome(False, f"HTTP {response.status_code}")
             if response.status_code == 429:
                 retry_at = self.clock() + retry_seconds(
                     response.headers.get("Retry-After"), self.clock()
@@ -229,14 +256,18 @@ class LL2Client:
             if response.status_code != 200:
                 raise SourceError(f"Unexpected source HTTP status {response.status_code}")
             if response.headers.get("Content-Type", "").split(";")[0] != "application/json":
+                self.outcome(False, "unexpected_content_type")
                 raise SourceError("Expected application/json; response retained for inspection")
             try:
                 page = Page.model_validate(json.loads(response.content))
             except ValueError:
+                self.outcome(False, "invalid_page_envelope")
                 raise SourceError(
                     "Invalid JSON page envelope; response retained for inspection"
                 ) from None
             if not page.results and (page.count > 0 or page.next):
+                self.outcome(False, "inconsistent_pagination")
                 raise SourceError("Empty page contradicts pagination; refusing silent data loss")
+            self.outcome(True)
             return page
         raise AssertionError("unreachable")

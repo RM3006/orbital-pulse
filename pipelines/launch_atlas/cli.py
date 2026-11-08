@@ -154,6 +154,19 @@ def parser() -> argparse.ArgumentParser:
         default=[],
         help="Explicitly include an offline_import run; repeat for each curated import",
     )
+    worker_init = commands.add_parser(
+        "worker-init", help="Offline: bind the local weekly worker to a saved history plan"
+    )
+    worker_init.add_argument("--history-plan-id", required=True)
+    commands.add_parser("worker-tick", help="Network: one due worker batch, at most eight requests")
+    commands.add_parser("worker-status", help="Offline: worker, quota and freshness status")
+    commands.add_parser(
+        "worker-stop", help="Request a durable stop after the current bounded batch"
+    )
+    worker_resume = commands.add_parser(
+        "worker-resume", help="Resume after investigation without resetting quota"
+    )
+    worker_resume.add_argument("--reason", required=True)
     import_command.add_argument(
         "--orbital-only",
         action="store_true",
@@ -182,6 +195,11 @@ def parser() -> argparse.ArgumentParser:
                 "plan-reconcile",
                 "run-plan",
                 "rebuild-state",
+                "worker-init",
+                "worker-tick",
+                "worker-status",
+                "worker-stop",
+                "worker-resume",
             )
         ],
     ):
@@ -204,6 +222,31 @@ def main(argv: list[str] | None = None) -> int:
         overrides["max_requests"] = arguments.max_requests
     try:
         settings = Settings.from_env(**overrides)
+        if arguments.command.startswith("worker-"):
+            from launch_atlas.worker import (
+                WorkerBusy,
+                initialize_worker,
+                resume_worker,
+                stop_worker,
+                tick_worker,
+                worker_status,
+            )
+
+            try:
+                if arguments.command == "worker-init":
+                    result = initialize_worker(settings, arguments.history_plan_id)
+                elif arguments.command == "worker-status":
+                    result = worker_status(settings)
+                elif arguments.command == "worker-stop":
+                    result = stop_worker(settings)
+                elif arguments.command == "worker-resume":
+                    result = resume_worker(settings, arguments.reason)
+                else:
+                    result = tick_worker(settings)
+            except WorkerBusy:
+                result = {"status": "already_running"}
+            print(json.dumps(result, indent=2))
+            return 1 if result["status"] == "blocked" else 0
         if arguments.command == "doctor":
             print(
                 json.dumps(
@@ -376,7 +419,10 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(result, indent=2))
             return 0
         if arguments.command == "run-plan":
-            result = run_plan(settings, arguments.plan_id)
+            from launch_atlas.worker import worker_lock
+
+            with worker_lock(settings.data_dir / "worker"):
+                result = run_plan(settings, arguments.plan_id)
             print(json.dumps(result, indent=2))
             return 0 if result["complete"] else 2
         if arguments.command == "import-raw":

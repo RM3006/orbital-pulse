@@ -161,6 +161,11 @@ def test_transient_retry_counts_against_budget(
 ) -> None:
     store = LocalStore(tmp_path)
     calls, saved, sleeps = [], [], []
+    current_time = [10000.0]
+
+    def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        current_time[0] += seconds
 
     def handler(request: httpx.Request) -> httpx.Response:
         calls.append(request)
@@ -172,7 +177,8 @@ def test_transient_retry_counts_against_budget(
         Settings(data_dir=tmp_path, max_requests=2),
         store,
         transport=httpx.MockTransport(handler),
-        sleep=sleeps.append,
+        sleep=sleep,
+        clock=lambda: current_time[0],
     )
     try:
         result = client.fetch(
