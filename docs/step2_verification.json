@@ -209,13 +209,15 @@
     "request_evidence_rows": 24
   },
   "latest_state_export": {
-    "generation_id": "revision-00000042-ad5f27b59f57",
+    "generation_id": "revision-00000042-166535df0343",
     "quality_passed": true,
     "launch_record_current_rows": 2067,
     "launch_observation_rows": 2088,
     "fact_launch_attempt_rows": 1744,
     "fact_upcoming_schedule_rows": 179,
-    "coverage_unknown_orbital_scope": 99
+    "coverage_unknown_orbital_scope": 99,
+    "exported_at_utc": "2026-11-08T14:13:03.885187+00:00",
+    "note": "Re-exported accepted revision 42 with raw-backed observation schedule fields and deterministic provenance order for Step 3. No new LL2 call."
   },
   "export": {
     "quality_passed": true,
@@ -347,5 +349,14 @@
     "fact_launch_attempt_rows": 1278,
     "fact_upcoming_schedule_rows": 179,
     "coverage_unknown_orbital_scope": 88
+  },
+  "state_export_before_schedule_fields": {
+    "generation_id": "revision-00000042-ad5f27b59f57",
+    "quality_passed": true,
+    "launch_record_current_rows": 2067,
+    "launch_observation_rows": 2088,
+    "fact_launch_attempt_rows": 1744,
+    "fact_upcoming_schedule_rows": 179,
+    "coverage_unknown_orbital_scope": 99
   }
 }

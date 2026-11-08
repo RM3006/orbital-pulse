@@ -8,7 +8,7 @@ An interactive visualization project using public worldwide launch data, with **
 
 ## What works today
 
-A local Python CLI ingests LL2 responses into immutable local raw files, resumes saved queries, maintains cross-run SQLite state/observations and exports validated Parquet generations. Step 3 pins a verified snapshot, loads local Parquet directly into BigQuery with deterministic jobs/receipts, and builds/tests dbt models in expiring scratch. The warehouse currently holds revision 27: all 11 source tables loaded and cloud row counts matched the receipt; all 26 dbt models, 80 warehouse data tests and a synthetic outcome-denominator unit test passed. The BigQuery release-metadata backend passed synthetic publish/CAS/rollback checks in scratch; retained reporting data, reader views and full orchestration remain unfinished. Local history has since advanced to revision 42, but remains incomplete and has not been reloaded to BigQuery. No release was published and the reporting dataset remains empty. GCS is deferred; Data Studio is not connected; no schedule or public dashboard is running.
+A local Python CLI saves replayable LL2 responses, resumes queries, maintains SQLite current state/observations and exports validated Parquet. One Dagster job now pins inputs, loads local Parquet into BigQuery, builds/tests dbt models, validates reporting data, and optionally retains/activates a release. Revision 42 is loaded: 31 models, 102 data tests and 6 unit tests passed in scratch. Nine analytical marts cover launch/family outcomes, flown hardware, deduplicated reuse/landings, supported turnaround, site cadence, schedule movement, upcoming schedules and coverage. Reporting storage retains rows and dimensions separately from mutable candidates, with consistent views and atomic activation/rollback. The full history remains incomplete, so the production candidate is ineligible for activation. Current verification is in [ROADMAP.md](ROADMAP.md). No Data Studio report or refresh schedule is operating.
 
 ```mermaid
 flowchart LR
@@ -18,9 +18,13 @@ flowchart LR
     State --> Tables[Validated Parquet generations]
     Raw --> Replay[Offline replay / rebuild]
     Replay --> State
+    Tables --> Load[Verified local-file BigQuery load]
+    Load --> dbt[dbt models + tests]
+    dbt --> Gate[Coverage + retained-data checks]
+    Gate --> Release[Release rows + active pointer + reader views]
 ```
 
-Terraform CLI 1.13.1 and locked Google provider 7.46.2 are applied to the existing project: six datasets, four APIs, two workload service accounts and least-privilege dataset/job roles. The local Terraform state is not remote. The user authorized BigQuery processing within the active Free Trial's monthly free limits. GCS is excluded and raw files stay local. Local gcloud ADC and `dbt debug` pass; ADC uses the user-approved `cloud-platform` OAuth scope only (no Cloud SQL), while the private dbt profile declares BigQuery and caps each query at 1 GB. Data Studio is selected but not connected; no report or website is published. See the local ADC instructions in [operations](docs/operations.md#local-dbt-authentication-with-google-cloud-cli-adc), [architecture](ARCHITECTURE.md) and [roadmap](ROADMAP.md).
+Terraform CLI 1.13.1 and locked Google provider 7.46.2 manage six datasets, four APIs and two scoped workload identities in the existing project. Terraform state and raw files stay local; GCS is deferred. Local gcloud ADC supplies the authorized BigQuery workflow. The integrated runner caps each query at 100 MB; the standalone dbt profile defaults to a configurable 1 GB cap. These are per-job limits, not a monthly spending guarantee. The public source repository is [RM3006/orbital-pulse](https://github.com/RM3006/orbital-pulse); CI checks Linux and Windows without cloud credentials. See [operations](docs/operations.md), [architecture](ARCHITECTURE.md) and [roadmap](ROADMAP.md).
 
 ## Quick start
 

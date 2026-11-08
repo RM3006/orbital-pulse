@@ -54,7 +54,7 @@ venv = ".venv"
 testpaths = ["tests"]
 addopts = '-ra -m "not integration and not live"'
 markers = [
-  "integration: warehouse integration (not yet implemented)",
+  "integration: explicit BigQuery scratch checks; requires ADC and opt-in",
   "live: explicit public API access",
   "local_asyncio: allow only local loopback sockets for Windows asyncio/Dagster execution",
 ]

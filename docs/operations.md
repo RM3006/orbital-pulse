@@ -1,13 +1,13 @@
 # Setup and operations
 
-Nothing is scheduled or published. Local commands operate on `LOCAL_DATA_DIR` (default `data`). Step 2 requires no cloud credentials. Live `run-plan` uses the same LL2 client, immutable raw response chain and quota ledger as earlier ingestion; planning, state inspection, export and rebuild are offline.
+No dashboard is published and no refresh is scheduled. Local commands operate on `LOCAL_DATA_DIR` (default `data`). Step 2 requires no cloud credentials. Live `run-plan` uses the same LL2 client, immutable raw response chain and quota ledger as earlier ingestion; planning, state inspection, export and rebuild are offline.
 
 ## Local setup and checks
 
-Use the repository root with Python 3.12 and uv. Windows verification used Python 3.12.13 and uv 0.11.17. A first locked install requires registry access; use `--offline` only when dependencies are cached. Linux CI is authored but has not run remotely.
+Use the repository root with Python 3.12 and uv. Windows verification used Python 3.12.13 and uv 0.11.17. A first locked install requires registry access; use `--offline` only when dependencies are cached. Linux and Windows CI install the locked warehouse group and run the offline checks.
 
 ```powershell
-uv sync --locked
+uv sync --locked --group warehouse
 uv run ruff check .
 uv run ruff format --check .
 uv run pyright
@@ -17,54 +17,52 @@ uv run python -m launch_atlas --help
 uv build --wheel
 ```
 
-These commands work in PowerShell and standard Linux shells. `.pytest-tmp` is reserved for test temporary files; keep project data elsewhere. Tests import the installed package, and default tests block socket connections. The wheel exposes `launch_atlas` and the `launch-atlas` executable.
+These commands work in PowerShell and standard Linux shells. `.pytest-tmp` is reserved for test temporary files; keep project data elsewhere. Tests import the installed package, and default tests block external socket connections. Marked Dagster tests allow local loopback for Windows asyncio. The wheel exposes `launch_atlas` and the `launch-atlas` executable.
 
 ## Step 3 warehouse workflow
 
-The optional warehouse dependency group contains BigQuery, dbt and Dagster tooling. GCS is deliberately not part of the current design: raw JSON, manifests and prepared Parquet stay on the local filesystem. Terraform manages the existing project's BigQuery datasets/APIs/IAM; its state remains local.
+The optional `warehouse` group supplies BigQuery, dbt and Dagster. Raw JSON stays local; cloud loads send prepared Parquet directly to BigQuery. The latest source snapshot is SQLite revision 42. The production candidate remains ineligible while its historical plan is incomplete; scratch verification uses a separate, complete bounded fixture scope and never overrides production eligibility.
 
-The snapshot loaded into BigQuery was `sla-input-v1-0f7ad0d77cbf3fa2b34a410da0b274205128c643b5c8c1f3359b3ed04bfca9b5` at SQLite revision 27. Local Step 2 has since advanced to revision 35 and its Parquet export passes quality; that newer revision has not yet been pinned or loaded. To prepare a current snapshot and, if separately intended, load it from local files, use:
+The integrated command runs the same dependency chain locally and in tests:
 
 ```powershell
 uv sync --locked --group warehouse
-uv run python -m launch_atlas state-export --data-dir data
-uv run python -m launch_atlas input-snapshot --data-dir data
-$snapshotId = Read-Host "Paste the input_snapshot_id printed by input-snapshot"
-$projectLine = Get-Content .env.local | Where-Object { $_ -match '^GCP_PROJECT_ID=' } | Select-Object -First 1
-$env:GCP_PROJECT_ID = ($projectLine -split '=', 2)[1].Trim().Trim('"')
-$locationLine = Get-Content .env.local | Where-Object { $_ -match '^GCP_LOCATION=' } | Select-Object -First 1
-$env:GCP_LOCATION = ($locationLine -split '=', 2)[1].Trim().Trim('"')
-uv run --env-file .env.local python -m launch_atlas warehouse-prepare --snapshot-id $snapshotId --project-id $env:GCP_PROJECT_ID --location $env:GCP_LOCATION
-uv run --env-file .env.local python -m launch_atlas warehouse-load --snapshot-id $snapshotId --project-id $env:GCP_PROJECT_ID --location $env:GCP_LOCATION
+uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-run --data-dir data
 ```
 
-The prepare command is offline; `warehouse-load` is the explicit cloud-write boundary. It rechecks source evidence and local Parquet, uses deterministic BigQuery file-load jobs and explicit schemas, verifies row counts, then writes a receipt under `data/warehouse/plans/`. It sends no raw files to a cloud object store. The stored receipt and job verification for this snapshot are under `data/warehouse/` (ignored by Git).
+This is an explicit cloud-write command: validated export → immutable snapshot → checksummed local-file loads → isolated dbt build/tests → reporting content validation. It creates invocation-specific model aliases in the seven-day scratch dataset and saves profiles, dbt logs/artifacts, candidate evidence and result/failure summaries under `data/warehouse/runs/<run-id>/`. Profiles contain environment expressions, not credential JSON. The new runner caps BigQuery/Python/dbt queries at 100,000,000 bytes each and runs dbt with one thread. Its cap is per job, not a project/monthly spending guarantee. Measure free-tier headroom before bounded cloud verification; never use trial credit beyond the authorized free limits.
 
-Local dbt authentication uses Google Cloud CLI ADC in the Windows user profile. `.env.local` contains only the project/location identifiers; do not put tokens, passwords, OAuth JSON or service-account keys there. The private dbt profile is under ignored `data/dbt/profiles/`. For a scratch build, source data remains in `space_launch_atlas_source`, while all model layers target the expiring scratch dataset:
+Without `--publish`, no production reporting rows or pointer are created. The result reports `candidate_built`, row counts and actual release eligibility. To include live acquisition, explicitly supply `--refresh-plan-id <saved-refresh-plan>` and `--max-requests <1-8>`; an incomplete refresh stops the downstream chain. The shared LL2 ledger and raw/checkpoint rules still apply. No ingestion is performed when the flag is omitted.
+
+After required history is complete and a candidate passes every check, first internal activation is:
 
 ```powershell
-$env:DBT_SOURCE_DATASET = "space_launch_atlas_source"
-$env:DBT_TARGET_DATASET = "space_launch_atlas_scratch"
-$env:DBT_STAGING_DATASET = "space_launch_atlas_scratch"
-$env:DBT_CORE_DATASET = "space_launch_atlas_scratch"
-$env:DBT_MARTS_DATASET = "space_launch_atlas_scratch"
-$tablePrefix = "sla_0f7ad0d77cbf3fa2"
-$dbtVars = "{input_snapshot_id: $snapshotId, source_table_prefix: $tablePrefix}"
-uv run --env-file .env.local dbt debug --project-dir models --profiles-dir data/dbt/profiles
-uv run --env-file .env.local dbt build --project-dir models --profiles-dir data/dbt/profiles --target-path data/warehouse/dbt/0f7ad0d77cbf3fa2/target --log-path data/warehouse/dbt/0f7ad0d77cbf3fa2/logs --vars $dbtVars --no-version-check
+uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-run --data-dir data --publish --expected-active none
 ```
 
-For the transactional release backend integration check, set `RUN_BIGQUERY_INTEGRATION=1` only when intentionally running the cloud test. It creates two uniquely named tables in `space_launch_atlas_scratch`, verifies publish/stale-writer/rollback behavior, and requires the configured scratch dataset's seven-day expiration. The test is skipped by default:
+For later activation, pass the actual previous release ID instead of `none`. The gate runs before retention. Each release retains nine marts and six dimension/bridge relations with `release_id`; stable views use one active pointer. Schema, row counts, snapshot scope, SHA-256 row-multiset digests and manifest identities are checked before activation. Candidate builds cannot overwrite retained rows. A stale writer or failed candidate preserves the current pointer. This is internal warehouse activation; Data Studio/site publication remains separate.
+
+Rollback verifies the previously retained rows without rebuilding them:
+
+```powershell
+uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-rollback --release-id <retained-release-id> --expected-active <current-release-id>
+```
+
+For recovery, inspect the run's `failure.json` and dbt logs, then fix the cause and run a new candidate. Deterministic source load jobs can be reused; new candidate aliases prevent concurrent model collisions. Do not manually move the active pointer or overwrite retained rows. Incompatible reporting schema changes require a reviewed storage/view migration; the current implementation fails closed rather than silently altering old releases.
+
+The granular offline `state-export`, `input-snapshot` and `warehouse-prepare` commands and explicit `warehouse-load` remain available. Load-plan contract v3 records an optional source-dataset override for expiring scratch tests; normal loads still target `space_launch_atlas_source`. Prepared files use a short hash prefix plus a full-identity collision check to stay within Windows path limits. Raw manifests and bodies are verified locally, not uploaded.
+
+Cloud integration is opt-in and uses the existing scratch dataset, local ADC, and seven-day expiration:
 
 ```powershell
 $env:RUN_BIGQUERY_INTEGRATION = "1"
-uv run --locked --offline --group warehouse --env-file .env.local pytest tests/test_bigquery_releases.py -m integration --basetemp=.pytest-tmp/release-test -q
+uv run --locked --group warehouse --env-file .env.local pytest tests/test_bigquery_releases.py tests/test_reporting_pipeline.py -m integration --basetemp .pytest-tmp -q
 Remove-Item Env:RUN_BIGQUERY_INTEGRATION
 ```
 
-The latest verified run built 26 models and passed 80 dbt data tests plus one dbt unit test. A per-job `maximum_bytes_billed=1,000,000,000` cap is configured, but this is not a monthly/project cost ceiling. No reporting release was published: the snapshot still has `release_eligible=false` while Step 2 history is incomplete. Data Studio is not connected because the user requires a free-only project and there is no demonstrated hard per-query connector cap.
+The data-release test executes two complete, mocked-source 1957 histories through the actual load/dbt/retain/activate chain; all fixture source/model/reporting tables stay in scratch. It checks reader views, changed candidates, stale publication, failed dbt work, rollback and corrupted retained data. Its combined 15-view reader query uses a separate 250 MB cap because BigQuery's per-table billing minimum requires about 170 MiB; ordinary pipeline jobs keep the 100 MB cap. Default tests remain offline. dbt parse validates 31 models, 11 sources, 102 data tests and 6 unit tests with placeholders and no ADC.
 
-For offline-only dbt parsing with placeholders, copy `models/profiles.yml.example` into a temporary profiles directory and run `dbt parse`; this does not validate cloud authentication or execute SQL. Parse discovers 26 models, 11 sources and 80 data tests. Cloud model/test commands require the local ADC and the explicit real target/dataset routing shown above.
+The earlier Dagster stall was a sandbox restriction on Windows asyncio's local socket pair, not a warehouse or OAuth failure. Execution works in a normal terminal; a restricted test runner needs local-loopback access. Do not weaken Windows security settings or grant broader cloud scopes to solve it.
 
 ### Local dbt authentication with Google Cloud CLI ADC
 
@@ -124,7 +122,7 @@ Smoke uses five detailed records per page by default. History/recent/upcoming so
 - `exports/generations/<revision-id>/`: immutable Parquet candidate, quality and manifest. `exports/active.json` points to the last validated generation.
 - `normalized/<run-id>/`: legacy/per-run replay outputs; not the cross-run state export.
 - `.writer.lock`: exclusive local writer lock. A stale lock must be checked against its PID before removing that file only.
-- `warehouse/prepared/<snapshot-id>/tables/`: local Parquet copies tagged with the input snapshot.
+- `warehouse/prepared/<snapshot-hash-prefix>/tables/`: local Parquet copies tagged with the input snapshot.
 - `warehouse/plans/<plan-hash-prefix>/load-plan.json`: deterministic, offline local-file-to-BigQuery load plan. No GCS upload is performed. A load receipt is written only after the explicit BigQuery loader confirms destination row counts.
 
 Do not delete raw evidence, SQLite state or quota history as routine recovery. Raw runs can reproduce current state offline. Keep backups together if moving the data root.
@@ -168,6 +166,6 @@ Retention stays manual: retain raw evidence, source request provenance, current 
 
 Terraform installation, resource declarations, live deployment and offline mock checks are documented in [infra/README.md](../infra/README.md). Terraform was applied to the authorized project; its no-op refresh plan is clean. The BigQuery release backend has passed an opt-in scratch integration test for publish, compare-and-swap, stale-writer rejection and rollback. No production reporting store or active release exists. A local Dagster graph composes snapshot and load-plan preparation; definition checks pass, but execution did not progress to its first step on Windows, including for a trivial job, so no Dagster execution is claimed.
 
-Default tests are offline. Run `uv sync --locked`, `ruff check`, `ruff format --check`, `pyright` and `pytest --basetemp .pytest-tmp` before further source calls. Remote CI is configured but has not been verified on GitHub/Linux.
+Default tests are offline. Install `uv sync --locked --group warehouse` for all-code checks, then run Ruff lint/format, Pyright and `pytest --basetemp .pytest-tmp`. Linux and Windows CI have both passed these checks without cloud credentials. The base CLI runtime remains usable without the warehouse group.
 
 Production orchestration remains proposed: one Dagster chain for ingest/load/dbt/check/publish, invoked by scheduled GitHub Actions. The local snapshot→plan graph is authored but not executable in this Windows environment. Terraform and the BigQuery source load have been applied; dbt models/tests and the transactional release backend have been verified in scratch. Actual release publication remains gated because the snapshot is not eligible while Step 2 history is incomplete. Data Studio remains disconnected pending a free-only query-cost plan. Do not upgrade to a paid account, exceed the free tier or create GCS resources. The no-billing sandbox still omits DML; post-trial architecture remains unresolved.
