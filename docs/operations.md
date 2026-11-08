@@ -1,6 +1,6 @@
 # Setup and operations
 
-No dashboard is published and no refresh is scheduled. Local commands operate on `LOCAL_DATA_DIR` (default `data`). Step 2 requires no cloud credentials. Live `run-plan` uses the same LL2 client, immutable raw response chain and quota ledger as earlier ingestion; planning, state inspection, export and rebuild are offline.
+The local LL2 worker below can schedule acquisition; no dashboard or BigQuery refresh schedule is active. Local commands operate on `LOCAL_DATA_DIR` (default `data`). Step 2 requires no cloud credentials. Live `run-plan` uses the same LL2 client, immutable raw response chain and quota ledger as earlier ingestion; planning, state inspection, export and rebuild are offline.
 
 ## Local setup and checks
 
@@ -18,6 +18,26 @@ uv build --wheel
 ```
 
 These commands work in PowerShell and standard Linux shells. `.pytest-tmp` is reserved for test temporary files; keep project data elsewhere. Tests import the installed package, and default tests block external socket connections. Marked Dagster tests allow local loopback for Windows asyncio. The wheel exposes `launch_atlas` and the `launch-atlas` executable.
+
+## Automatic local LL2 acquisition
+
+Install or inspect the current-user Windows task from the checkout:
+
+```powershell
+.\scripts\worker.ps1 -Action Install -HistoryPlanId p2-history-1957-2026
+.\scripts\worker.ps1 -Action Status
+.\scripts\worker.ps1 -Action Stop
+.\scripts\worker.ps1 -Action Resume -Reason "Investigated the failure and verified the cause is resolved"
+.\scripts\worker.ps1 -Action Uninstall
+```
+
+The `OrbitalPulse-LL2` task launches the existing venv's `pythonw.exe` without a console window. It checks every five minutes and at user logon, but performs network work only when due. It uses an interactive, limited user token, stores no password and needs this PC awake with the user logged in. Missed work resumes after the next available trigger; it does not wake the computer. This is a local acquisition scheduler, not a GitHub-hosted or cloud scheduler.
+
+Each tick runs at most eight requests through the existing `run_plan` dependency chain; the shared `data/quota.json` still limits all callers to 15 reservations per rolling hour, including retries. Quota and `Retry-After` waits survive restarts. Three consecutive transport/HTTP/page-envelope failures across invocations latch a persistent circuit; a valid page resets the streak. Schema failures, conflicts, differing historical passes and replay/checksum failures also block the worker for investigation. Inspect `data/worker/state.json`, its last batch and the referenced raw manifests before resuming. Resume records a reason and clears the failure circuit, preserving quota reservations and server waits. Stop is honored at the end of the current bounded invocation; uninstall removes only this checkout's task and preserves data.
+
+The worker resumes the bound frozen history plan, then immediately creates a catch-up refresh. It verifies a full raw rebuild against all 11 active Parquet file hashes/row counts and semantic state counts before switching to weekly operation. Empty source runs are verified by the input snapshot; rebuild does not count those as semantic acquisitions. Subsequent refreshes run seven days after the prior successful refresh tick, resuming the same frozen plan after interruption. Recent 30-day launches, the upcoming 90-day horizon and updates since the last accepted correction watermark (with 48-hour overlap) are merged and validated; they do not rescan every historical year. A verified input snapshot is saved for the existing warehouse chain. BigQuery execution and reporting activation are not enabled by this worker.
+
+Worker state, heartbeat, batch results, audit output and snapshot handoff remain under ignored `data/worker/`. The independent kernel lock prevents overlapping scheduled ticks and manual `run-plan` CLI commands, and releases when a process dies. A leftover `.writer.lock` is recovered only if its PID is verifiably dead; a live or inaccessible PID is left alone. Pause the worker before manual state repairs. Direct CLI controls are `worker-init`, `worker-tick`, `worker-status`, `worker-stop` and `worker-resume`; status is offline. Deleting the worker state or using another data root is not a quota-reset mechanism.
 
 ## Step 3 warehouse workflow
 
@@ -168,4 +188,4 @@ Terraform installation, resource declarations, live deployment and offline mock 
 
 Default tests are offline. Install `uv sync --locked --group warehouse` for all-code checks, then run Ruff lint/format, Pyright and `pytest --basetemp .pytest-tmp`. Linux and Windows CI have both passed these checks without cloud credentials. The base CLI runtime remains usable without the warehouse group.
 
-Unattended scheduling remains unimplemented; the same local Dagster dependency chain already executes acquisition, snapshot, load, dbt/checks, retention and activation. Actual production activation remains gated by incomplete Step 2 history. Data Studio's no-cost edition requires a Google account and hosted report/data-source creation, not a server instance. The user selected their personal Google account as report owner and a weekly initial BigQuery warehouse refresh. The query credential must have only the required read access to the reporting dataset plus BigQuery Job User in the query project; verify the account's effective and inherited roles before using it for queries. A distinct Google identity is needed only if the personal account cannot meet that rule. Managed Workspace/Cloud Identity is required only for Data Studio's optional service-account mode. The inspected Data Studio home still requests API authorization; no report is connected. The console confirms an active trial; private expiry/cost observations remain in ignored evidence. No account upgrade, paid usage or GCS is authorized; continuing within free usage after the trial requires active billing or a compatible alternative. Research, measured build bytes and the weekly cadence estimate are recorded in ROADMAP.md.
+Local LL2 acquisition scheduling is implemented; automatic warehouse execution remains pending. The same local Dagster dependency chain already executes acquisition, snapshot, load, dbt/checks, retention and activation. Actual production activation remains gated by incomplete Step 2 history. Data Studio's no-cost edition requires a Google account and hosted report/data-source creation, not a server instance. The user selected their personal Google account as report owner and a weekly initial BigQuery warehouse refresh. The query credential must have only the required read access to the reporting dataset plus BigQuery Job User in the query project; verify the account's effective and inherited roles before using it for queries. A distinct Google identity is needed only if the personal account cannot meet that rule. Managed Workspace/Cloud Identity is required only for Data Studio's optional service-account mode. The inspected Data Studio home still requests API authorization; no report is connected. The console confirms an active trial; private expiry/cost observations remain in ignored evidence. No account upgrade, paid usage or GCS is authorized; continuing within free usage after the trial requires active billing or a compatible alternative. Research, measured build bytes and the weekly cadence estimate are recorded in ROADMAP.md.

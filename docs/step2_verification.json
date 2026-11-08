@@ -204,7 +204,10 @@
           "first": "2026-11-08T14:56:17.926756+00:00",
           "last": "2026-11-08T14:57:30.595786+00:00"
         },
-        "invocation_budgets": [8, 7],
+        "invocation_budgets": [
+          8,
+          7
+        ],
         "http_200": 15,
         "failed": 0,
         "transport_errors": 0,
@@ -231,7 +234,10 @@
           "first": "2026-11-08T16:46:59.271566+00:00",
           "last": "2026-11-08T16:47:58.514306+00:00"
         },
-        "invocation_budgets": [8, 7],
+        "invocation_budgets": [
+          8,
+          7
+        ],
         "http_200": 15,
         "failed": 0,
         "transport_errors": 0,
@@ -467,5 +473,70 @@
     "fact_launch_attempt_rows": 1744,
     "fact_upcoming_schedule_rows": 179,
     "coverage_unknown_orbital_scope": 99
+  },
+  "current_state_after_2026_11_08_worker_start": {
+    "latest_fully_reconciled_year": 1986,
+    "new_distinct_launch_ids": 493,
+    "next_window": "1987 pass 1",
+    "plan": {
+      "frozen_as_of_utc": "2026-11-07T09:13:02.659206+00:00",
+      "plan_id": "p2-history-1957-2026",
+      "plan_type": "backfill",
+      "status": "in_progress",
+      "windows": {
+        "committed": 60,
+        "planned": 80
+      }
+    },
+    "requests": {
+      "count": 15,
+      "first_started_at_utc": "2026-11-08T19:25:27.876600+00:00",
+      "http_200": 15,
+      "last_observed_at_utc": "2026-11-08T19:27:28.879596+00:00",
+      "retry_after": false,
+      "transport_failures": 0
+    },
+    "state_counts": {
+      "acquisition": 65,
+      "launch_current": 3423,
+      "observation_event": 3444,
+      "raw_request": 114,
+      "record_sighting": 6696,
+      "state_conflict": 0
+    },
+    "state_revision": 65,
+    "verified_at_utc": "2026-11-08T19:29:48.194651+00:00"
+  },
+  "latest_state_export_after_2026_11_08_worker_start": {
+    "coverage": {
+      "explicit_suborbital_scope": 0,
+      "missing_precision": 3057,
+      "missing_provider": 0,
+      "payload_completeness": "unknown; structured counts do not establish actual payload totals",
+      "precision_supported": 333,
+      "unknown_orbital_scope": 130,
+      "unsupported_precision": 3090,
+      "upcoming_as_of_utc": "2026-11-07T09:08:20.459707+00:00",
+      "upcoming_horizon_days": 90,
+      "upcoming_unsupported_precision": 33,
+      "with_stage_detail": 3423
+    },
+    "created_at_utc": "2026-11-08T19:27:30.795225+00:00",
+    "generation_id": "revision-00000065-97ba850de347",
+    "quality_passed": true,
+    "rows": {
+      "bridge_configuration_family": 341,
+      "dim_launch_site": 40,
+      "dim_pad": 134,
+      "dim_provider": 60,
+      "dim_vehicle_configuration": 256,
+      "dim_vehicle_family": 71,
+      "fact_launch_attempt": 3069,
+      "fact_upcoming_schedule": 179,
+      "launch_observation": 3444,
+      "launch_record_current": 3423,
+      "stage_flight": 73
+    },
+    "state_revision": 65
   }
 }
