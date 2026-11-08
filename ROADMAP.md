@@ -36,6 +36,8 @@ The following 15-request batch ran on 2026-11-08 from 16:46:59 to 16:47:58 UTC. 
 
 The frozen 90-day upcoming view has 179 supported interval rows, as of 2026-11-07. Coverage retains 33 upcoming candidates with unsupported precision; the revision-42 full current state includes 99 unknown-orbital-scope records. These are dated extraction observations, not global completeness or reliability findings. [Evidence and limits](docs/step2_verification.json).
 
+Bulk-history research on 2026-11-08 verified a free GCAT launch TSV download: 13.8 MB, 76,024 records across multiple launch categories, updated 2026-11-07. This is a possible alternative to the initial LL2 API backfill, but identifiers, scope/outcomes and reporting fields require mapping and overlap checks before adoption. No source switch or merge was made. The current LL2 history plan is a finite initial backfill; regular weekly refreshes use recent/upcoming/source-update queries rather than repeating every historical year. No public LL2 bulk dump was identified in the reviewed official documentation. [Source research and retained evidence](docs/data_sources.md#bulk-history-alternative-investigated--2026-11-08).
+
 Remaining acceptance work:
 
 - Resume the saved 1957–2026 history plan at 1983 pass 1, offset 100. Of its 140 initial annual pass-windows, 52 are committed, one is extracting and 87 remain planned; dense-year splits and any later reconciliation can add child windows. The latest 15-call allowance was fully used successfully; wait until at least 2026-11-08 17:47:59 UTC before another full batch and account for other LL2 consumers sharing the public IP.
