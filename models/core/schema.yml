@@ -1,0 +1,149 @@
+version: 2
+
+models:
+  - name: core_launch_current
+    description: One current LL2 record per launch for the requested immutable input snapshot.
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: launch_id
+        data_tests: [not_null, unique]
+  - name: core_launch_attempt
+    description: Qualifying orbital attempts with known launched status and nonfuture NET.
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: launch_id
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('core_launch_current')
+                field: launch_id
+      - name: source_status_id
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [3, 4, 6, 7, 9]
+                quote: false
+      - name: outcome
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [success, failure, partial_failure, unresolved]
+  - name: core_dim_provider
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: provider_id
+        data_tests: [not_null, unique]
+  - name: core_dim_vehicle_configuration
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: configuration_id
+        data_tests: [not_null, unique]
+  - name: core_dim_vehicle_family
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: family_id
+        data_tests: [not_null, unique]
+  - name: core_configuration_family
+    description: Configuration/family bridge; one pair per snapshot, potentially overlapping across families.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [input_snapshot_id, configuration_id, family_id]
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: configuration_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('core_dim_vehicle_configuration')
+                field: configuration_id
+      - name: family_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('core_dim_vehicle_family')
+                field: family_id
+  - name: core_dim_launch_site
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: site_id
+        data_tests: [not_null, unique]
+  - name: core_dim_pad
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: pad_id
+        data_tests: [not_null, unique]
+      - name: site_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('core_dim_launch_site')
+                field: site_id
+  - name: core_stage_flight
+    description: One launch/stage-flight association; this grain is not additive as launch attempts.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [input_snapshot_id, launch_id, stage_flight_id]
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: launch_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('core_launch_current')
+                field: launch_id
+      - name: stage_flight_id
+        data_tests: [not_null]
+  - name: core_launch_observation
+    description: One accepted semantic transition event; repeated returns to prior content remain distinct.
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: observation_event_key
+        data_tests: [not_null, unique]
+      - name: launch_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('core_launch_current')
+                field: launch_id
+  - name: core_upcoming_schedule
+    description: One supported schedule interval per launch within the snapshot's frozen horizon.
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: launch_id
+        data_tests:
+          - not_null
+          - unique
+          - relationships:
+              arguments:
+                to: ref('core_launch_current')
+                field: launch_id
+      - name: precision_supported
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [true]
+                quote: false
+      - name: schedule_earliest_utc
+        data_tests: [not_null]
+      - name: schedule_latest_exclusive_utc
+        data_tests: [not_null]

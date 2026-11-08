@@ -1,0 +1,30 @@
+version: 2
+
+sources:
+  - name: launch_atlas
+    description: Immutable normalized tables loaded from one pinned input snapshot.
+    database: "{{ target.database }}"
+    schema: "{{ env_var('DBT_SOURCE_DATASET', 'space_launch_atlas_source') }}"
+    tables:
+      - name: launch_record_current
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_launch_record_current"
+      - name: dim_provider
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_dim_provider"
+      - name: dim_vehicle_configuration
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_dim_vehicle_configuration"
+      - name: dim_vehicle_family
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_dim_vehicle_family"
+      - name: bridge_configuration_family
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_bridge_configuration_family"
+      - name: dim_launch_site
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_dim_launch_site"
+      - name: dim_pad
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_dim_pad"
+      - name: stage_flight
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_stage_flight"
+      - name: launch_observation
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_launch_observation"
+      - name: fact_launch_attempt
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_fact_launch_attempt"
+      - name: fact_upcoming_schedule
+        identifier: "{{ var('source_table_prefix', 'sla_parse_only') }}_fact_upcoming_schedule"

@@ -1,0 +1,17 @@
+# Copy to a private dbt profiles directory. Defaults are parse-only placeholders.
+# `method: oauth` uses local Application Default Credentials only when dbt run/test executes.
+space_launch_atlas:
+  target: local
+  outputs:
+    local:
+      type: bigquery
+      method: oauth
+      scopes:
+        - https://www.googleapis.com/auth/bigquery
+      project: "{{ env_var('GCP_PROJECT_ID', 'placeholder-project') }}"
+      dataset: "{{ env_var('DBT_TARGET_DATASET', 'space_launch_atlas_dev') }}"
+      location: "{{ env_var('GCP_LOCATION', 'replace-with-colocated-location') }}"
+      threads: 1
+      job_retries: 1
+      job_execution_timeout_seconds: 1800
+      maximum_bytes_billed: 1000000000

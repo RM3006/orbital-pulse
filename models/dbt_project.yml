@@ -1,0 +1,19 @@
+name: space_launch_atlas
+version: "1.0.0"
+config-version: 2
+profile: space_launch_atlas
+
+model-paths: [staging, core, marts]
+analysis-paths: [analyses]
+test-paths: [tests]
+macro-paths: [macros]
+seed-paths: [seeds]
+snapshot-paths: [snapshots]
+clean-targets: [target, dbt_packages]
+
+vars:
+  source_table_prefix: sla_parse_only
+
+models:
+  space_launch_atlas:
+    +materialized: table

@@ -1,0 +1,97 @@
+version: 2
+
+models:
+  - name: mart_launch_attempt_daily
+    description: |
+      Additive launch-level numerator and denominator counts by UTC day/provider/configuration/site.
+      Unknown provider is retained as a null group. Shares are calculated from summed counts.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              [input_snapshot_id, launch_date_utc, provider_id, configuration_id, site_id]
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: attempt_count
+        data_tests: [not_null]
+      - name: classified_outcome_count
+        data_tests: [not_null]
+  - name: mart_family_outcomes_daily
+    description: |
+      Family-level distinct launch counts. Configuration membership may overlap, so family rows
+      are deliberately nonadditive across family_id.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [input_snapshot_id, launch_date_utc, family_id]
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: attempt_count
+        data_tests: [not_null]
+  - name: mart_stage_flight
+    description: Stage-flight grain for reuse/landing exploration; never sum launch counts here.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [input_snapshot_id, launch_id, stage_flight_id]
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+  - name: mart_upcoming_schedule
+    description: One row per supported launch schedule interval in the frozen 90-day horizon.
+    columns:
+      - name: input_snapshot_id
+        data_tests: [not_null, contains_only_requested_snapshot]
+      - name: launch_id
+        data_tests: [not_null, unique]
+
+unit_tests:
+  - name: preserves_launch_outcome_denominators_with_partial_and_unresolved_results
+    model: mart_launch_attempt_daily
+    given:
+      - input: ref('core_launch_attempt')
+        rows:
+          - input_snapshot_id: sla-input-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            net_utc: "2026-01-02T03:04:00Z"
+            provider_id: null
+            configuration_id: null
+            site_id: null
+            launch_id: attempt-success
+            outcome: success
+          - input_snapshot_id: sla-input-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            net_utc: "2026-01-02T05:06:00Z"
+            provider_id: null
+            configuration_id: null
+            site_id: null
+            launch_id: attempt-failure
+            outcome: failure
+          - input_snapshot_id: sla-input-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            net_utc: "2026-01-02T07:08:00Z"
+            provider_id: null
+            configuration_id: null
+            site_id: null
+            launch_id: attempt-partial
+            outcome: partial_failure
+          - input_snapshot_id: sla-input-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            net_utc: "2026-01-02T09:10:00Z"
+            provider_id: null
+            configuration_id: null
+            site_id: null
+            launch_id: attempt-unresolved
+            outcome: unresolved
+    expect:
+      rows:
+        - input_snapshot_id: sla-input-v1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          launch_date_utc: "2026-01-02"
+          launch_year_utc: 2026
+          provider_id: null
+          configuration_id: null
+          site_id: null
+          attempt_count: 4
+          success_count: 1
+          failure_count: 1
+          partial_failure_count: 1
+          classified_outcome_count: 3
+          unresolved_count: 1
