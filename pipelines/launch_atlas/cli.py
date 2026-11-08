@@ -18,13 +18,20 @@ from launch_atlas.pipeline import (
     summary,
 )
 from launch_atlas.storage.exports import export_current
+from launch_atlas.storage.snapshots import create_input_snapshot
 from launch_atlas.storage.state import StateStore
+from launch_atlas.warehouse.loading import (
+    CloudTarget,
+    GoogleBigQuerySourceLoader,
+    execute_load_plan,
+    prepare_load_plan,
+)
 from launch_atlas.windows import create_backfill_plan, create_reconcile_plan, create_refresh_plan
 
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(
-        description="Space Launch Atlas: local LL2 raw storage and Parquet; no cloud writes."
+        description="Space Launch Atlas: local LL2 raw storage; cloud writes are explicit commands."
     )
     commands = root.add_subparsers(dest="command", required=True)
     doctor = commands.add_parser("doctor", help="Offline configuration and dependency check")
@@ -73,6 +80,25 @@ def parser() -> argparse.ArgumentParser:
     commands.add_parser(
         "state-export", help="Offline: validate and write a Parquet state generation"
     )
+    commands.add_parser(
+        "input-snapshot", help="Offline: verify and pin accepted Parquet/raw warehouse inputs"
+    )
+    warehouse_prepare = commands.add_parser(
+        "warehouse-prepare",
+        help="Offline: verify a snapshot and build a placeholder-safe load plan",
+    )
+    warehouse_prepare.add_argument("--snapshot-id", required=True)
+    warehouse_prepare.add_argument("--project-id", default="placeholder-project")
+    warehouse_prepare.add_argument("--dataset-prefix", default="space_launch_atlas")
+    warehouse_prepare.add_argument("--location", default="replace-with-colocated-location")
+    warehouse_load = commands.add_parser(
+        "warehouse-load",
+        help="Cloud write: load a verified snapshot from local Parquet into BigQuery",
+    )
+    warehouse_load.add_argument("--snapshot-id", required=True)
+    warehouse_load.add_argument("--project-id", required=True)
+    warehouse_load.add_argument("--dataset-prefix", default="space_launch_atlas")
+    warehouse_load.add_argument("--location", required=True)
     plan_backfill = commands.add_parser(
         "plan-backfill", help="Offline: freeze two historical passes into yearly windows"
     )
@@ -121,6 +147,9 @@ def parser() -> argparse.ArgumentParser:
                 "state-merge",
                 "state-status",
                 "state-export",
+                "input-snapshot",
+                "warehouse-prepare",
+                "warehouse-load",
                 "plan-backfill",
                 "plan-refresh",
                 "plan-reconcile",
@@ -187,6 +216,53 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if arguments.command == "state-export":
             print(json.dumps(export_current(settings), indent=2))
+            return 0
+        if arguments.command == "input-snapshot":
+            snapshot = create_input_snapshot(settings)
+            print(
+                json.dumps(
+                    {
+                        "input_snapshot_id": snapshot["input_snapshot_id"],
+                        "snapshot_path": snapshot["snapshot_path"],
+                        "contract_version": snapshot["contract_version"],
+                        "state_revision": snapshot["state"]["revision"],
+                        "export_generation_id": snapshot["export"]["generation_id"],
+                        "source_runs_verified": len(snapshot["source_inputs"]),
+                        "parquet_files_verified": len(snapshot["export"]["files"]),
+                        "quality_passed": snapshot["export"]["quality_passed"],
+                        "plans": snapshot["state"]["plans"],
+                    },
+                    indent=2,
+                )
+            )
+            return 0
+        if arguments.command == "warehouse-prepare":
+            plan = prepare_load_plan(
+                settings.data_dir,
+                arguments.snapshot_id,
+                CloudTarget(
+                    project_id=arguments.project_id,
+                    dataset_prefix=arguments.dataset_prefix,
+                    location=arguments.location,
+                ),
+            )
+            print(json.dumps(plan.summary(), indent=2))
+            return 0
+        if arguments.command == "warehouse-load":
+            plan = prepare_load_plan(
+                settings.data_dir,
+                arguments.snapshot_id,
+                CloudTarget(
+                    project_id=arguments.project_id,
+                    dataset_prefix=arguments.dataset_prefix,
+                    location=arguments.location,
+                ),
+            )
+            loader = GoogleBigQuerySourceLoader.from_application_default_credentials(
+                arguments.project_id
+            )
+            result = execute_load_plan(plan, loader)
+            print(json.dumps(result, indent=2))
             return 0
         if arguments.command == "rebuild-state":
             result = rebuild_state(

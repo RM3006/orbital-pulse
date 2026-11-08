@@ -14,6 +14,15 @@ def digest(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
 
 
+def digest_file(path: Path) -> str:
+    """Hash large immutable artifacts without loading them into memory at once."""
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 def atomic_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")

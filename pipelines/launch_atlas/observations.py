@@ -9,6 +9,21 @@ from typing import Any
 from launch_atlas.storage.local import digest
 
 HASH_VERSION = "2"
+OBSERVATION_KEY_VERSION = "1"
+
+
+def observation_event_key(acquisition_id: str, record_ordinal: int) -> str:
+    """Return a replay-stable key for one accepted source record event."""
+    if not acquisition_id or record_ordinal < 0:
+        raise ValueError(
+            "Observation event identity requires an acquisition and nonnegative ordinal"
+        )
+    identity = json.dumps(
+        ["launch_observation_event", OBSERVATION_KEY_VERSION, acquisition_id, record_ordinal],
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return f"oev{OBSERVATION_KEY_VERSION}_{digest(identity.encode('utf-8'))}"
 
 
 def semantic_projection(record: dict[str, Any]) -> dict[str, Any]:

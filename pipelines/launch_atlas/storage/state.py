@@ -11,7 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from launch_atlas.observations import HASH_VERSION, semantic_hash
+from launch_atlas.normalize import PARSER_VERSION
+from launch_atlas.observations import HASH_VERSION, observation_event_key, semantic_hash
 
 SCHEMA_VERSION = 4
 
@@ -236,7 +237,7 @@ class StateStore:
             for ordinal, request in enumerate(request_evidence or [], start=1):
                 requested_at = request.get("request_started_at_utc")
                 if requested_at is None:
-                    # Older Phase 1 manifests have receipt time only; do not invent send time.
+                    # Older Step 1 manifests have receipt time only; do not invent send time.
                     continue
                 connection.execute(
                     """INSERT INTO raw_request
@@ -814,7 +815,8 @@ class StateStore:
     def observation_records(self) -> list[dict[str, Any]]:
         with self.session() as connection:
             rows = connection.execute(
-                """SELECT event.launch_id, event.record_hash,
+                """SELECT event.acquisition_id, event.record_ordinal,
+                   event.launch_id, event.record_hash,
                    event.source_updated_at_utc, event.observed_at_utc,
                    sighting.raw_artifact
                    FROM observation_event AS event
@@ -825,12 +827,44 @@ class StateStore:
             ).fetchall()
             return [
                 {
+                    "observation_event_key": observation_event_key(
+                        row["acquisition_id"], row["record_ordinal"]
+                    ),
+                    "acquisition_id": row["acquisition_id"],
+                    "record_ordinal": row["record_ordinal"],
                     "launch_id": row["launch_id"],
                     "record_hash": row["record_hash"],
                     "source_updated_at_utc": datetime.fromisoformat(row["source_updated_at_utc"]),
                     "observed_at_utc": datetime.fromisoformat(row["observed_at_utc"]),
                     "raw_artifact": row["raw_artifact"],
-                    "parser_version": HASH_VERSION,
+                    "parser_version": PARSER_VERSION,
+                    "semantic_hash_version": HASH_VERSION,
                 }
                 for row in rows
             ]
+
+    def acquisition_records(self) -> list[dict[str, Any]]:
+        """Return accepted acquisition and frozen-window provenance in stable order."""
+        with self.session() as connection:
+            rows = connection.execute(
+                """SELECT acquisition.acquisition_id, acquisition.source_run_id,
+                   acquisition.observed_at_utc, acquisition.applied_at_utc,
+                   window.window_id, window.plan_id, window.stream_id,
+                   window.start_utc, window.end_utc, window.query_json,
+                   window.pass_number, window.extraction_status, window.reconciled,
+                   plan.plan_type, plan.frozen_as_of_utc
+                   FROM acquisition
+                   LEFT JOIN extraction_window AS window
+                     ON window.window_id=acquisition.source_run_id
+                   LEFT JOIN extraction_plan AS plan ON plan.plan_id=window.plan_id
+                   ORDER BY acquisition.acquisition_id"""
+            ).fetchall()
+            result = []
+            for row in rows:
+                item = dict(row)
+                if item["query_json"] is not None:
+                    item["query"] = json.loads(item.pop("query_json"))
+                else:
+                    item.pop("query_json")
+                result.append(item)
+            return result

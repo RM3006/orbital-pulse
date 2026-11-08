@@ -42,6 +42,37 @@ def test_generation_is_consistent_and_failed_candidate_keeps_active(
     assert json.loads(active_path.read_text()) == accepted
 
 
+def test_persistent_observation_export_has_stable_event_identity(
+    tmp_path: Path, records: list[dict[str, Any]]
+) -> None:
+    settings = Settings(data_dir=tmp_path)
+    state = StateStore(tmp_path)
+    original = deepcopy(records[2])
+    changed = deepcopy(original)
+    changed["status"] = {"id": 7, "name": "Partial Failure"}
+    changed["last_updated"] = "2026-11-02T12:00:00Z"
+    returned = deepcopy(original)
+    returned["last_updated"] = "2026-11-03T12:00:00Z"
+    for acquisition_id, record in (("a1", original), ("a2", changed), ("a3", returned)):
+        _apply(state, acquisition_id, record)
+
+    first = export_current(settings)
+    first_path = tmp_path / "exports" / "generations" / first["generation_id"]
+    first_events = pl.read_parquet(first_path / "launch_observation.parquet")
+    second = export_current(settings)
+    second_path = tmp_path / "exports" / "generations" / second["generation_id"]
+    second_events = pl.read_parquet(second_path / "launch_observation.parquet")
+
+    assert first_events.height == 3
+    assert first_events["observation_event_key"].n_unique() == 3
+    assert (
+        first_events["observation_event_key"].to_list()
+        == second_events["observation_event_key"].to_list()
+    )
+    assert set(first_events["acquisition_id"].to_list()) == {"a1", "a2", "a3"}
+    assert first["table_contracts"]["launch_observation"]["key"] == ["observation_event_key"]
+
+
 def test_shared_request_budget_covers_multiple_clients(tmp_path: Path) -> None:
     import httpx
     from launch_atlas.clients.ll2 import LL2Client, Page, PauseRun, RequestBudget

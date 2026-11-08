@@ -1,4 +1,5 @@
 import json
+import os
 import socket
 from pathlib import Path
 from typing import Any
@@ -8,7 +9,10 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def block_network(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
-    if request.node.get_closest_marker("live"):
+    if request.node.get_closest_marker("live") or (
+        request.node.get_closest_marker("integration")
+        and os.environ.get("RUN_BIGQUERY_INTEGRATION") == "1"
+    ):
         return
 
     def blocked(*args: Any, **kwargs: Any) -> None:

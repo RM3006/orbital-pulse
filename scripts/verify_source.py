@@ -1,4 +1,4 @@
-"""One-time Phase 0 probe; at most eight HTTP GETs, no retries or credentials.
+"""One-time Step 0 probe; at most eight HTTP GETs, no retries or credentials.
 
 Writes unchanged public response bytes and acquisition metadata under ignored data/.
 This is an evidence collection script, not the operational ingestion implementation.

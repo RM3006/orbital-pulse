@@ -9,7 +9,8 @@ from uuid import uuid4
 import polars as pl
 
 from launch_atlas.config import Settings
-from launch_atlas.normalize import SCHEMAS, normalize
+from launch_atlas.normalize import normalize
+from launch_atlas.observations import OBSERVATION_KEY_VERSION
 from launch_atlas.storage.local import LocalStore, atomic_json, digest
 from launch_atlas.storage.state import StateStore
 from launch_atlas.time_precision import schedule_interval
@@ -32,6 +33,19 @@ UPCOMING_SCHEMA = {
     "raw_artifact": pl.String,
 }
 
+PERSISTENT_OBSERVATION_SCHEMA = {
+    "observation_event_key": pl.String,
+    "acquisition_id": pl.String,
+    "record_ordinal": pl.Int64,
+    "launch_id": pl.String,
+    "record_hash": pl.String,
+    "source_updated_at_utc": pl.Datetime("us", "UTC"),
+    "observed_at_utc": pl.Datetime("us", "UTC"),
+    "raw_artifact": pl.String,
+    "parser_version": pl.String,
+    "semantic_hash_version": pl.String,
+}
+
 
 def export_current(settings: Settings) -> dict[str, Any]:
     """Build and validate a complete generation before replacing the active pointer."""
@@ -46,9 +60,18 @@ def export_current(settings: Settings) -> dict[str, Any]:
         if not quality["passed"]:
             raise ValueError("Persistent current state failed normalization/quality checks")
         tables["launch_observation"] = pl.DataFrame(
-            state.observation_records(), schema=SCHEMAS["launch_observation"]
-        ).sort(["launch_id", "observed_at_utc", "record_hash"])
+            state.observation_records(), schema=PERSISTENT_OBSERVATION_SCHEMA
+        ).sort("observation_event_key")
+        events = tables["launch_observation"]
+        if events["observation_event_key"].n_unique() != events.height:
+            raise ValueError("Persistent observation event key is not unique")
         quality["rows"]["launch_observation"] = tables["launch_observation"].height
+        quality["keys"] = {"launch_observation": ["observation_event_key"]}
+        quality["grains"] = {
+            "launch_observation": (
+                "One accepted semantic transition per acquisition record ordinal."
+            )
+        }
         as_of = state.latest_complete_refresh_asof() or datetime.now(UTC)
         horizon_end = as_of + timedelta(days=90)
         current_by_id = {
@@ -122,6 +145,13 @@ def export_current(settings: Settings) -> dict[str, Any]:
             "quality_passed": True,
             "rows": quality["rows"],
             "coverage": quality["coverage"],
+            "table_contracts": {
+                "launch_observation": {
+                    "grain": "One accepted semantic transition per acquisition record ordinal.",
+                    "key": ["observation_event_key"],
+                    "key_version": OBSERVATION_KEY_VERSION,
+                }
+            },
         }
         atomic_json(staging / "manifest.json", manifest)
         # Verify every written Parquet checksum before selecting the generation.

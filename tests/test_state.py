@@ -44,6 +44,33 @@ def test_cross_run_transitions_keep_a_b_a_and_replay_is_idempotent(
     }
 
 
+def test_observation_event_keys_survive_state_rebuild(
+    tmp_path: Path, records: list[dict[str, Any]]
+) -> None:
+    first_state = StateStore(tmp_path / "event-keys-original")
+    rebuilt_state = StateStore(tmp_path / "event-keys-rebuilt")
+    original = deepcopy(records[2])
+    changed = deepcopy(original)
+    changed["status"] = {"id": 7, "name": "Partial Failure"}
+    changed["last_updated"] = "2026-11-02T12:00:00Z"
+    returned = deepcopy(original)
+    returned["last_updated"] = "2026-11-03T12:00:00Z"
+    acquisitions = (("a1", original), ("a2", changed), ("a3", returned))
+
+    for store in (first_state, rebuilt_state):
+        for acquisition_id, record in acquisitions:
+            acquisition(store, acquisition_id, [record], "2026-11-01T17:00:00Z")
+
+    first = first_state.observation_records()
+    rebuilt = rebuilt_state.observation_records()
+    keys = [event["observation_event_key"] for event in first]
+    assert len(keys) == 3
+    assert len(set(keys)) == 3
+    assert keys == [event["observation_event_key"] for event in rebuilt]
+    assert all(event["record_ordinal"] == 0 for event in first)
+    assert {event["semantic_hash_version"] for event in first} == {"2"}
+
+
 def test_stale_and_equal_timestamp_conflict_do_not_replace_current(
     tmp_path: Path, records: list[dict[str, Any]]
 ) -> None:
