@@ -1,0 +1,359 @@
+version: 2
+models:
+- name: mart_booster_flight
+  description: Identifiable flown hardware, deduplicated before reuse and supported turnaround.
+  data_tests:
+  - unique_combination_of_columns:
+      arguments:
+        combination_of_columns:
+        - input_snapshot_id
+        - launch_id
+        - booster_id
+  columns:
+  - name: input_snapshot_id
+    data_tests:
+    - not_null
+    - contains_only_requested_snapshot
+  - name: booster_id
+    data_tests:
+    - not_null
+  - name: reuse_known_count
+    data_tests:
+    - not_null
+- name: mart_landing
+  description: One recorded landing, with separate attempt, known outcome and success counts.
+  data_tests:
+  - unique_combination_of_columns:
+      arguments:
+        combination_of_columns:
+        - input_snapshot_id
+        - landing_id
+  columns:
+  - name: input_snapshot_id
+    data_tests:
+    - not_null
+    - contains_only_requested_snapshot
+  - name: landing_id
+    data_tests:
+    - not_null
+- name: mart_site_cadence
+  description: One orbital attempt and its previous observed site attempt; gaps retain coverage limits.
+  data_tests:
+  - unique_combination_of_columns:
+      arguments:
+        combination_of_columns:
+        - input_snapshot_id
+        - launch_id
+  columns:
+  - name: input_snapshot_id
+    data_tests:
+    - not_null
+    - contains_only_requested_snapshot
+  - name: launch_id
+    data_tests:
+    - not_null
+- name: mart_schedule_movement
+  description: Comparable fine-precision schedule movement; refinements and coarse intervals stay distinct.
+  columns:
+  - name: input_snapshot_id
+    data_tests:
+    - not_null
+    - contains_only_requested_snapshot
+  - name: observation_event_key
+    data_tests:
+    - not_null
+    - unique
+  - name: comparison_basis
+    data_tests:
+    - accepted_values:
+        arguments:
+          values:
+          - first_observation
+          - unsupported_precision
+          - precision_changed
+          - coarse_precision
+          - comparable
+- name: mart_data_coverage
+  description: Independent snapshot coverage and source/observation freshness fields.
+  columns:
+  - name: input_snapshot_id
+    data_tests:
+    - not_null
+    - unique
+    - contains_only_requested_snapshot
+unit_tests:
+- name: reuse_deduplicates_associations_and_rejects_sparse_turnaround
+  model: mart_booster_flight
+  given:
+  - input: ref('mart_stage_flight')
+    rows:
+    - input_snapshot_id: s
+      launch_id: a
+      booster_id: 1
+      launch_net_utc: '2026-01-01T00:00:00Z'
+      hardware_is_placeholder: false
+      source_reused: false
+      source_flight_number: 1
+      launch_interval_basis: minute
+    - input_snapshot_id: s
+      launch_id: a
+      booster_id: 1
+      launch_net_utc: '2026-01-01T00:00:00Z'
+      hardware_is_placeholder: false
+      source_reused: false
+      source_flight_number: 1
+      launch_interval_basis: minute
+    - input_snapshot_id: s
+      launch_id: b
+      booster_id: 1
+      launch_net_utc: '2026-01-10T00:00:00Z'
+      hardware_is_placeholder: false
+      source_reused: true
+      source_flight_number: 3
+      launch_interval_basis: minute
+    - input_snapshot_id: s
+      launch_id: c
+      booster_id: 1
+      launch_net_utc: '2026-01-12T00:00:00Z'
+      hardware_is_placeholder: false
+      source_reused: true
+      source_flight_number: 4
+      previous_flight_utc: '2026-01-10T00:00:00Z'
+      launch_interval_basis: minute
+    - input_snapshot_id: s
+      launch_id: d
+      booster_id: 2
+      launch_net_utc: '2026-01-12T00:00:00Z'
+      hardware_is_placeholder: true
+      source_reused: true
+      source_flight_number: 2
+      launch_interval_basis: minute
+    - input_snapshot_id: s
+      launch_id: e
+      booster_id: 3
+      launch_net_utc: '2026-01-12T00:00:00Z'
+      hardware_is_placeholder: false
+      source_reused: false
+      source_flight_number: 2
+      launch_interval_basis: minute
+    - input_snapshot_id: s
+      launch_id: f
+      booster_id: 4
+      launch_net_utc: '2026-01-13T00:00:00Z'
+      hardware_is_placeholder: false
+      source_reused: null
+      source_flight_number: null
+      launch_interval_basis: minute
+    - input_snapshot_id: s
+      launch_id: g
+      booster_id: 5
+      launch_net_utc: '2026-01-14T00:00:00Z'
+      hardware_is_placeholder: false
+      source_reused: false
+      source_flight_number: 1
+      launch_interval_basis: day
+    - input_snapshot_id: s
+      launch_id: h
+      booster_id: 5
+      launch_net_utc: '2026-01-15T00:00:00Z'
+      hardware_is_placeholder: false
+      source_reused: true
+      source_flight_number: 2
+      launch_interval_basis: day
+  expect:
+    rows:
+    - launch_id: a
+      source_association_count: 2
+      reuse_known_count: 1
+      reused_flight_count: 0
+      turnaround_days: null
+    - launch_id: b
+      source_association_count: 1
+      reuse_known_count: 1
+      reused_flight_count: 1
+      turnaround_days: null
+    - launch_id: c
+      source_association_count: 1
+      reuse_known_count: 1
+      reused_flight_count: 1
+      turnaround_days: 2
+    - launch_id: e
+      source_association_count: 1
+      reuse_known_count: 0
+      reused_flight_count: 0
+      turnaround_days: null
+    - launch_id: f
+      source_association_count: 1
+      reuse_known_count: 0
+      reused_flight_count: 0
+      turnaround_days: null
+    - launch_id: g
+      source_association_count: 1
+      reuse_known_count: 1
+      reused_flight_count: 0
+      turnaround_days: null
+    - launch_id: h
+      source_association_count: 1
+      reuse_known_count: 1
+      reused_flight_count: 1
+      turnaround_days: null
+- name: landings_keep_unknowns_and_collapse_shared_associations
+  model: mart_landing
+  given:
+  - input: ref('mart_stage_flight')
+    rows:
+    - input_snapshot_id: s
+      launch_id: a
+      landing_id: 1
+      landing_attempt: true
+      landing_success: true
+    - input_snapshot_id: s
+      launch_id: a
+      landing_id: 1
+      landing_attempt: true
+      landing_success: true
+    - input_snapshot_id: s
+      launch_id: b
+      landing_id: 2
+      landing_attempt: true
+      landing_success: null
+    - input_snapshot_id: s
+      launch_id: c
+      landing_id: 3
+      landing_attempt: false
+      landing_success: null
+    - input_snapshot_id: s
+      launch_id: d
+      landing_id: 4
+      landing_attempt: true
+      landing_success: true
+    - input_snapshot_id: s
+      launch_id: d
+      landing_id: 4
+      landing_attempt: true
+      landing_success: false
+  expect:
+    rows:
+    - landing_id: 1
+      source_association_count: 2
+      attempted_landing_count: 1
+      known_landing_outcome_count: 1
+      successful_landing_count: 1
+      unknown_landing_outcome_count: 0
+    - landing_id: 2
+      source_association_count: 1
+      attempted_landing_count: 1
+      known_landing_outcome_count: 0
+      successful_landing_count: 0
+      unknown_landing_outcome_count: 1
+    - landing_id: 3
+      source_association_count: 1
+      attempted_landing_count: 0
+      known_landing_outcome_count: 0
+      successful_landing_count: 0
+      unknown_landing_outcome_count: 0
+    - landing_id: 4
+      source_association_count: 2
+      attempted_landing_count: 0
+      known_landing_outcome_count: 0
+      successful_landing_count: 0
+      unknown_landing_outcome_count: 0
+- name: schedule_refinement_is_not_a_delay
+  model: mart_schedule_movement
+  given:
+  - input: ref('core_launch_observation')
+    rows:
+    - input_snapshot_id: s
+      launch_id: a
+      observation_event_key: e1
+      observation_sequence: 1
+      schedule_earliest_utc: '2026-01-01T00:00:00Z'
+      net_precision_id: 5
+      interval_basis: day
+      precision_supported: true
+    - input_snapshot_id: s
+      launch_id: a
+      observation_event_key: e2
+      observation_sequence: 2
+      schedule_earliest_utc: '2026-01-02T00:00:00Z'
+      net_precision_id: 5
+      interval_basis: day
+      precision_supported: true
+    - input_snapshot_id: s
+      launch_id: a
+      observation_event_key: e3
+      observation_sequence: 3
+      schedule_earliest_utc: '2026-01-02T12:00:00Z'
+      net_precision_id: 1
+      interval_basis: minute
+      precision_supported: true
+  expect:
+    rows:
+    - observation_event_key: e1
+      comparison_basis: first_observation
+      schedule_movement_seconds: null
+    - observation_event_key: e2
+      comparison_basis: comparable
+      schedule_movement_seconds: 86400
+    - observation_event_key: e3
+      comparison_basis: precision_changed
+      schedule_movement_seconds: null
+- name: site_gaps_preserve_attempts_and_unknown_sites
+  model: mart_site_cadence
+  given:
+  - input: ref('core_launch_attempt')
+    rows:
+    - input_snapshot_id: s
+      launch_id: a
+      site_id: 1
+      net_utc: '2026-01-01T00:00:00Z'
+      interval_basis: minute
+    - input_snapshot_id: s
+      launch_id: b
+      site_id: 1
+      net_utc: '2026-01-04T00:00:00Z'
+      interval_basis: minute
+    - input_snapshot_id: s
+      launch_id: c
+      site_id: null
+      net_utc: '2026-01-05T00:00:00Z'
+      interval_basis: minute
+  - input: ref('core_dim_launch_site')
+    rows:
+    - input_snapshot_id: s
+      site_id: 1
+      name: Example site
+      latitude: 0.0
+      longitude: 0.0
+  expect:
+    rows:
+    - launch_id: a
+      attempt_count: 1
+      observed_gap_days: null
+    - launch_id: b
+      attempt_count: 1
+      observed_gap_days: 3
+    - launch_id: c
+      attempt_count: 1
+      observed_gap_days: null
+- name: stage_metrics_exclude_unflown_associations
+  model: mart_stage_flight
+  given:
+  - input: ref('core_stage_flight')
+    rows:
+    - input_snapshot_id: s
+      launch_id: past
+      stage_flight_id: 1
+    - input_snapshot_id: s
+      launch_id: future
+      stage_flight_id: 2
+  - input: ref('core_launch_attempt')
+    rows:
+    - input_snapshot_id: s
+      launch_id: past
+      net_utc: '2026-01-01T00:00:00Z'
+      interval_basis: minute
+  expect:
+    rows:
+    - launch_id: past
+      stage_flight_id: 1

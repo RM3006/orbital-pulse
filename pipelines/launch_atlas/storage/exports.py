@@ -34,6 +34,7 @@ UPCOMING_SCHEMA = {
 }
 
 PERSISTENT_OBSERVATION_SCHEMA = {
+    "observation_sequence": pl.Int64,
     "observation_event_key": pl.String,
     "acquisition_id": pl.String,
     "record_ordinal": pl.Int64,
@@ -44,6 +45,13 @@ PERSISTENT_OBSERVATION_SCHEMA = {
     "raw_artifact": pl.String,
     "parser_version": pl.String,
     "semantic_hash_version": pl.String,
+    "net_utc": pl.Datetime("us", "UTC"),
+    "net_precision_id": pl.Int64,
+    "net_precision_name": pl.String,
+    "schedule_earliest_utc": pl.Datetime("us", "UTC"),
+    "schedule_latest_exclusive_utc": pl.Datetime("us", "UTC"),
+    "interval_basis": pl.String,
+    "precision_supported": pl.Boolean,
 }
 
 
@@ -150,6 +158,12 @@ def export_current(settings: Settings) -> dict[str, Any]:
                     "grain": "One accepted semantic transition per acquisition record ordinal.",
                     "key": ["observation_event_key"],
                     "key_version": OBSERVATION_KEY_VERSION,
+                    "sequence_basis": [
+                        "source_updated_at_utc",
+                        "observed_at_utc",
+                        "acquisition_id",
+                        "record_ordinal",
+                    ],
                 }
             },
         }

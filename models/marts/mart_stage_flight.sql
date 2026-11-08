@@ -4,6 +4,7 @@ select
     stage.launch_id,
     stage.stage_flight_id,
     launch.net_utc as launch_net_utc,
+    launch.interval_basis as launch_interval_basis,
     launch.configuration_id,
     stage.booster_id,
     stage.serial_number,
@@ -16,6 +17,6 @@ select
     stage.landing_attempt,
     stage.landing_success
 from {{ ref('core_stage_flight') }} as stage
-left join {{ ref('core_launch_current') }} as launch
+inner join {{ ref('core_launch_attempt') }} as launch
   on stage.input_snapshot_id = launch.input_snapshot_id
  and stage.launch_id = launch.launch_id

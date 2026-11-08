@@ -11,8 +11,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from launch_atlas.normalize import PARSER_VERSION
+from launch_atlas.normalize import PARSER_VERSION, timestamp
 from launch_atlas.observations import HASH_VERSION, observation_event_key, semantic_hash
+from launch_atlas.time_precision import schedule_interval
 
 SCHEMA_VERSION = 4
 
@@ -815,33 +816,52 @@ class StateStore:
     def observation_records(self) -> list[dict[str, Any]]:
         with self.session() as connection:
             rows = connection.execute(
-                """SELECT event.acquisition_id, event.record_ordinal,
+                """SELECT ROW_NUMBER() OVER (
+                     PARTITION BY event.launch_id ORDER BY event.source_updated_at_utc,
+                     event.observed_at_utc, event.acquisition_id, event.record_ordinal
+                   ) AS observation_sequence, event.acquisition_id, event.record_ordinal,
                    event.launch_id, event.record_hash,
                    event.source_updated_at_utc, event.observed_at_utc,
-                   sighting.raw_artifact
+                   sighting.raw_artifact, sighting.raw_record_json
                    FROM observation_event AS event
                    JOIN record_sighting AS sighting
                      ON event.acquisition_id=sighting.acquisition_id
                     AND event.record_ordinal=sighting.record_ordinal
                    ORDER BY event.observation_id"""
             ).fetchall()
-            return [
-                {
-                    "observation_event_key": observation_event_key(
-                        row["acquisition_id"], row["record_ordinal"]
-                    ),
-                    "acquisition_id": row["acquisition_id"],
-                    "record_ordinal": row["record_ordinal"],
-                    "launch_id": row["launch_id"],
-                    "record_hash": row["record_hash"],
-                    "source_updated_at_utc": datetime.fromisoformat(row["source_updated_at_utc"]),
-                    "observed_at_utc": datetime.fromisoformat(row["observed_at_utc"]),
-                    "raw_artifact": row["raw_artifact"],
-                    "parser_version": PARSER_VERSION,
-                    "semantic_hash_version": HASH_VERSION,
-                }
-                for row in rows
-            ]
+            result = []
+            for row in rows:
+                record = json.loads(row["raw_record_json"])
+                precision = record.get("net_precision") or {}
+                net = timestamp(record.get("net"))
+                interval = schedule_interval(net, precision)
+                result.append(
+                    {
+                        "observation_sequence": row["observation_sequence"],
+                        "observation_event_key": observation_event_key(
+                            row["acquisition_id"], row["record_ordinal"]
+                        ),
+                        "acquisition_id": row["acquisition_id"],
+                        "record_ordinal": row["record_ordinal"],
+                        "launch_id": row["launch_id"],
+                        "record_hash": row["record_hash"],
+                        "source_updated_at_utc": datetime.fromisoformat(
+                            row["source_updated_at_utc"]
+                        ),
+                        "observed_at_utc": datetime.fromisoformat(row["observed_at_utc"]),
+                        "raw_artifact": row["raw_artifact"],
+                        "parser_version": PARSER_VERSION,
+                        "semantic_hash_version": HASH_VERSION,
+                        "net_utc": net,
+                        "net_precision_id": precision.get("id"),
+                        "net_precision_name": precision.get("name"),
+                        "schedule_earliest_utc": interval.earliest_utc,
+                        "schedule_latest_exclusive_utc": interval.latest_exclusive_utc,
+                        "interval_basis": interval.interval_basis,
+                        "precision_supported": interval.precision_supported,
+                    }
+                )
+            return result
 
     def acquisition_records(self) -> list[dict[str, Any]]:
         """Return accepted acquisition and frozen-window provenance in stable order."""

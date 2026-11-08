@@ -104,6 +104,55 @@ def test_shared_request_budget_covers_multiple_clients(tmp_path: Path) -> None:
     third.close()
 
 
+def test_observation_sequence_uses_launch_provenance_not_sqlite_global_ids(
+    tmp_path: Path, records: list[dict[str, Any]]
+) -> None:
+    state = StateStore(tmp_path)
+    first = deepcopy(records[2])
+    changed = deepcopy(first)
+    changed.update(last_updated="2026-11-02T00:00:00Z", net="2026-01-02T00:00:00Z")
+    _apply(state, "first", first)
+    _apply(state, "another-launch", deepcopy(records[3]))
+    _apply(state, "changed", changed)
+    events = state.observation_records()
+    assert [row["observation_sequence"] for row in events if row["launch_id"] == first["id"]] == [
+        1,
+        2,
+    ]
+
+
+def test_observations_export_the_schedule_at_each_event_not_the_current_schedule(
+    tmp_path: Path, records: list[dict[str, Any]]
+) -> None:
+    state = StateStore(tmp_path)
+    for ordinal, (net, precision) in enumerate(
+        [
+            ("2026-01-01T00:00:00Z", {"id": 5, "name": "Day"}),
+            ("2026-01-02T00:00:00Z", {"id": 5, "name": "Day"}),
+            ("2026-01-02T12:34:00Z", {"id": 1, "name": "Minute"}),
+        ],
+        1,
+    ):
+        record = deepcopy(records[2])
+        record.update(
+            net=net, net_precision=precision, last_updated=f"2026-11-0{ordinal}T12:00:00Z"
+        )
+        _apply(state, f"schedule-{ordinal}", record)
+    exported = export_current(Settings(data_dir=tmp_path))
+    frame = pl.read_parquet(
+        tmp_path
+        / "exports"
+        / "generations"
+        / exported["generation_id"]
+        / "launch_observation.parquet"
+    )
+    events = frame.sort("observation_sequence").to_dicts()
+    assert [row["interval_basis"] for row in events] == ["day", "day", "minute"]
+    assert [row["net_utc"].day for row in events] == [1, 2, 2]
+    assert events[-1]["schedule_earliest_utc"].minute == 34
+    assert len(set(frame["observation_event_key"])) == 3
+
+
 def test_offline_rebuild_copies_raw_and_recreates_state_without_quota(
     tmp_path: Path,
 ) -> None:

@@ -51,6 +51,7 @@ def test_dbt_project_parses_offline_with_placeholder_profile(tmp_path: Path) -> 
     manifest = json.loads((target_dir / "manifest.json").read_text(encoding="utf-8"))
     models = [node for node in manifest["nodes"].values() if node["resource_type"] == "model"]
     tests = [node for node in manifest["nodes"].values() if node["resource_type"] == "test"]
-    assert len(models) == 26
-    assert len(tests) == 80
+    assert len(models) == 31
+    assert len(tests) >= 100
+    assert len(manifest["unit_tests"]) == 6
     assert len(manifest["sources"]) == 11
