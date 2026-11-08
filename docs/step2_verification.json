@@ -1,5 +1,5 @@
 {
-  "verified_at_utc": "2026-11-08T12:17:02.735286+00:00",
+  "verified_at_utc": "2026-11-08T15:00:12.727826+00:00",
   "api": "The Space Devs Launch Library 2 production API 2.3.0",
   "plans": {
     "p2-refresh-20261107": {
@@ -196,7 +196,34 @@
       },
       "new_launch_ids_1972_1975": 477,
       "second_pass_unchanged_ids_1972_1974": 345,
-      "next_window": "p2-history-1957-2026-1975-pass-2"
+      "next_window": "p2-history-1957-2026-1979-pass-2",
+      "quota_batch_1975_1979": {
+        "date": "2026-11-08",
+        "requests": 15,
+        "request_window_utc": {
+          "first": "2026-11-08T14:56:17.926756+00:00",
+          "last": "2026-11-08T14:57:30.595786+00:00"
+        },
+        "invocation_budgets": [8, 7],
+        "http_200": 15,
+        "failed": 0,
+        "transport_errors": 0,
+        "retry_after": false,
+        "completed_matching_passes": {
+          "1975": 132,
+          "1976": 132,
+          "1977": 130,
+          "1978": 128
+        },
+        "completed_first_pass": {
+          "1979": 110
+        },
+        "new_launch_ids": 500,
+        "second_pass_unchanged_ids_1975_1978": 390,
+        "state_conflicts": 0,
+        "latest_fully_reconciled_year": 1978,
+        "next_window": "p2-history-1957-2026-1979-pass-2"
+      }
     }
   },
   "state_after_refresh_and_history_through_1963": {
@@ -266,7 +293,7 @@
     "claim_limit": "The bounded query was accepted and returned a record; suborbital inclusion and complete filter behavior were not established."
   },
   "network_budget": {
-    "calls_during_step2_verification": 85,
+    "calls_during_step2_verification": 100,
     "breakdown": {
       "bounded_filter_probe": 1,
       "refresh": 7,
@@ -275,24 +302,25 @@
       "history_transport_failures": 3,
       "history_1964_1968_attempts_2026_11_08": 15,
       "history_1968_1971_successful_2026_11_08": 15,
-      "history_1972_1975_successful_2026_11_08": 15
+      "history_1972_1975_successful_2026_11_08": 15,
+      "history_1975_1979_successful_2026_11_08": 15
     },
-    "last_successful_request_utc": "2026-11-08T12:16:31.638+00:00",
+    "last_successful_request_utc": "2026-11-08T14:57:30.595786+00:00",
     "current_hour_requests": {
       "reserved": 15,
       "http_200": 15,
       "failed": 0,
       "local_quota_remaining": 0,
-      "next_local_slot_utc": "2026-11-08T13:14:54.117+00:00",
-      "all_latest_batch_slots_reopen_utc": "2026-11-08T13:16:31.638+00:00"
+      "next_local_slot_utc": "2026-11-08T15:56:17.926756+00:00",
+      "all_latest_batch_slots_reopen_utc": "2026-11-08T15:57:30.595786+00:00"
     },
-    "note": "The 2026-11-07 ledger reserved 15 attempts: 12 received HTTP 200 and three raised transport errors without an HTTP response; provider-side accounting of those failures is unknown. On 2026-11-08, three later 15-request batches used 45 reservations; all received HTTP 200. The latest batch completed matching passes for 1972-1974 and committed 1975 pass 1. Its 1975 pass-2 first page is retained at offset 100 and is not merged until complete. The local rolling ledger is exhausted until the recorded reservations age out. The ledger cannot see other consumers sharing the public IP.",
+    "note": "The 2026-11-07 ledger reserved 15 attempts: 12 received HTTP 200 and three raised transport errors without an HTTP response; provider-side accounting of those failures is unknown. On 2026-11-08, four later 15-request batches used 60 reservations; all received HTTP 200. The latest batch completed matching passes for 1975-1978 and committed 1979 pass 1. Local quota was exhausted after the latest batch; the ledger cannot see other consumers sharing the public IP.",
     "last_successful_request_before_latest_batch_utc": "2026-11-08T11:06:27.986+00:00"
   },
   "limits": [
     "Refresh source counts overlap across windows and are not additive distinct-launch totals.",
     "The 90-day interval fact is a schedule-uncertainty view, not exact launch timing.",
-    "Historical acquisition is incomplete; 103 of the original 140 annual pass-windows are unresolved, including an incomplete 1975 second pass, before any dense-window splits or further reconciliation.",
+    "Historical acquisition is incomplete; 95 of the original 140 annual pass-windows remain planned, including 1979 pass 2, before any dense-window splits or further reconciliation.",
     "No worldwide completeness, reliability trend, reuse statistic, automated freshness SLA, cloud deployment or public release is claimed.",
     "Remote GitHub CI and Linux validation have not run."
   ],
@@ -340,6 +368,29 @@
     "latest_fully_reconciled_history_year": 1974,
     "partial_1975_second_pass_is_not_merged": true,
     "raw_request_evidence_rows": 68
+  },
+  "current_state_after_2026_11_08_1457_batch": {
+    "revision": 50,
+    "acquisitions": 50,
+    "current_launch_records": 2567,
+    "record_sightings": 4874,
+    "semantic_observation_events": 2588,
+    "conflicts": 0,
+    "complete_plan_windows": 45,
+    "planned_windows": 95,
+    "latest_fully_reconciled_history_year": 1978,
+    "completed_1979_first_pass_records": 110,
+    "raw_request_evidence_rows": 84
+  },
+  "latest_state_export_after_2026_11_08_1457_batch": {
+    "generation_id": "revision-00000050-ebafa5113975",
+    "exported_at_utc": "2026-11-08T15:00:12.727826+00:00",
+    "quality_passed": true,
+    "launch_record_current_rows": 2567,
+    "launch_observation_rows": 2588,
+    "fact_launch_attempt_rows": 2234,
+    "fact_upcoming_schedule_rows": 179,
+    "parquet_files": 11
   },
   "state_export_after_previous_batch_1971": {
     "generation_id": "revision-00000035-65641ecfbfd7",
