@@ -24,3 +24,8 @@ union all
 select 'schedule_precision'
 from {{ ref('mart_schedule_movement') }}
 where not is_comparable and schedule_movement_seconds is not null
+union all
+select 'stage_coverage'
+from {{ ref('mart_data_coverage') }}
+where attempts_with_recorded_stage_flights > orbital_attempt_records
+   or attempts_with_stage_field_supplied > orbital_attempt_records
