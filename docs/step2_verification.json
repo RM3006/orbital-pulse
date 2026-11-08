@@ -1,0 +1,351 @@
+{
+  "verified_at_utc": "2026-11-08T12:17:02.735286+00:00",
+  "api": "The Space Devs Launch Library 2 production API 2.3.0",
+  "plans": {
+    "p2-refresh-20261107": {
+      "type": "refresh",
+      "frozen_as_of_utc": "2026-11-07T09:08:20.459707+00:00",
+      "status": "complete",
+      "requests": 7,
+      "windows": {
+        "recent": {
+          "run_id": "p2-refresh-20261107-recent",
+          "records": 22,
+          "pages": 1
+        },
+        "upcoming": {
+          "run_id": "p2-refresh-20261107-upcoming",
+          "source_count": 250,
+          "pages": 5,
+          "page_size": 50
+        },
+        "corrections": {
+          "run_id": "p2-refresh-20261107-corrections-001",
+          "records": 37,
+          "pages": 1
+        }
+      }
+    },
+    "p2-history-1957-2026": {
+      "type": "backfill",
+      "status": "in_progress",
+      "initial_annual_windows": 140,
+      "progress_at_2026_11_07": {
+        "committed": 14,
+        "pending": 126
+      },
+      "committed": 37,
+      "pending": 103,
+      "reconciled_window": "1957",
+      "pass_1_run_id": "p2-history-1957-2026-1957-pass-1",
+      "pass_2_run_id": "p2-history-1957-2026-1957-pass-2",
+      "pass_response_sha256": "a84113882e0f31d240f077b2c6259923db05017f12fb0e539a765c5141a90111",
+      "records_per_pass": 3,
+      "newly_committed_years": {
+        "1958": {
+          "records_each_pass": 28,
+          "pass_sha256_match": true
+        },
+        "1959": {
+          "records_each_pass": 23,
+          "pass_sha256_match": true
+        },
+        "1960": {
+          "records_each_pass": 39,
+          "pass_sha256_match": true
+        },
+        "1961": {
+          "records_each_pass": 49,
+          "pass_sha256_match": true
+        },
+        "1962": {
+          "records_each_pass": 82,
+          "pass_sha256_match": true
+        },
+        "1963": {
+          "records_each_pass": 69,
+          "pass_sha256_match": true
+        },
+        "1964": {
+          "records_each_pass": 100,
+          "pass_sha256_match": true
+        },
+        "1965": {
+          "records_each_pass": 124,
+          "pass_sha256_match": true
+        },
+        "1966": {
+          "records_each_pass": 131,
+          "pass_sha256_match": true
+        },
+        "1967": {
+          "records_each_pass": 140,
+          "pass_sha256_match": true
+        }
+      },
+      "successful_requests_1958_1963": 12,
+      "successful_requests_1964_1967_with_1968_partial": 15,
+      "new_launch_ids_1958_1963": 290,
+      "second_pass_unchanged_ids_1958_1963": 290,
+      "new_launch_ids_1964_1967": 495,
+      "second_pass_unchanged_ids_1964_1967": 495,
+      "reconciled_through_year": 1974,
+      "state_conflicts": 0,
+      "coverage_cursor_after_last_committed_year": "1975-01-01T00:00:00+00:00",
+      "window_status_counts": {
+        "committed": 37,
+        "extracting": 1,
+        "planned": 102
+      },
+      "new_launch_ids_1968_1971": 518,
+      "second_pass_unchanged_ids_1968_1971": 518,
+      "checkpoint_before_1968_1971_batch": {
+        "run_id": "p2-history-1957-2026-1968-pass-1",
+        "status": "budget_stopped",
+        "http_status": 200,
+        "accepted_page_records": 100,
+        "source_count": 131,
+        "next_offset": 100,
+        "raw_response_retained": true,
+        "merged_into_state": false
+      },
+      "quota_batch_1968_1971": {
+        "date": "2026-11-08",
+        "requests": 15,
+        "request_window_utc": {
+          "first": "2026-11-08T11:04:38.628+00:00",
+          "last": "2026-11-08T11:06:27.986+00:00"
+        },
+        "http_200": 15,
+        "failed": 0,
+        "transport_errors": 0,
+        "retry_after": false,
+        "completed_years": {
+          "1968": {
+            "records_each_pass": 131,
+            "pass_content_matched": true
+          },
+          "1969": {
+            "records_each_pass": 127,
+            "pass_content_matched": true
+          },
+          "1970": {
+            "records_each_pass": 125,
+            "pass_content_matched": true
+          },
+          "1971": {
+            "records_each_pass": 135,
+            "pass_content_matched": true
+          }
+        },
+        "new_launch_ids": 518,
+        "second_pass_unchanged_ids": 518,
+        "state_conflicts": 0
+      },
+      "latest_quota_batch": {
+        "date": "2026-11-08",
+        "requests": 15,
+        "request_window_utc": {
+          "first": "2026-11-08T12:14:54.117+00:00",
+          "last": "2026-11-08T12:16:31.638+00:00"
+        },
+        "http_200": 15,
+        "failed": 0,
+        "transport_errors": 0,
+        "retry_after": false,
+        "completed_years": {
+          "1972": {
+            "records_each_pass": 116,
+            "pass_content_matched": true
+          },
+          "1973": {
+            "records_each_pass": 116,
+            "pass_content_matched": true
+          },
+          "1974": {
+            "records_each_pass": 113,
+            "pass_content_matched": true
+          }
+        },
+        "completed_first_pass": {
+          "1975": {
+            "records": 132
+          }
+        },
+        "in_progress_second_pass": {
+          "year": 1975,
+          "accepted_page_records": 100,
+          "source_count": 132,
+          "next_offset": 100,
+          "raw_response_retained": true,
+          "merged_into_state": false
+        },
+        "new_launch_ids": 477,
+        "second_pass_unchanged_ids_1972_1974": 345,
+        "state_conflicts": 0
+      },
+      "checkpoint_before_latest_batch": {
+        "run_id": "p2-history-1957-2026-1975-pass-2",
+        "status": "budget_stopped",
+        "http_status": 200,
+        "accepted_page_records": 100,
+        "source_count": 132,
+        "next_offset": 100,
+        "raw_response_retained": true,
+        "merged_into_state": false
+      },
+      "new_launch_ids_1972_1975": 477,
+      "second_pass_unchanged_ids_1972_1974": 345,
+      "next_window": "p2-history-1957-2026-1975-pass-2"
+    }
+  },
+  "state_after_refresh_and_history_through_1963": {
+    "revision": 19,
+    "complete_live_acquisitions": 19,
+    "current_launch_records": 577,
+    "record_sightings": 1004,
+    "semantic_observation_events": 598,
+    "conflicts": 0,
+    "request_evidence_rows": 24
+  },
+  "latest_state_export": {
+    "generation_id": "revision-00000042-ad5f27b59f57",
+    "quality_passed": true,
+    "launch_record_current_rows": 2067,
+    "launch_observation_rows": 2088,
+    "fact_launch_attempt_rows": 1744,
+    "fact_upcoming_schedule_rows": 179,
+    "coverage_unknown_orbital_scope": 99
+  },
+  "export": {
+    "quality_passed": true,
+    "launch_attempt_rows": 39,
+    "upcoming_schedule_rows": 179,
+    "upcoming_horizon_days": 90,
+    "as_of_utc": "2026-11-07T09:08:20.459707+00:00",
+    "upcoming_interval_basis_counts": {
+      "day": 5,
+      "hour": 6,
+      "minute": 6,
+      "month": 20,
+      "quarter": 13,
+      "year": 129
+    },
+    "coverage": {
+      "precision_supported": 250,
+      "unsupported_precision": 37,
+      "missing_precision": 4,
+      "unknown_orbital_scope": 24,
+      "upcoming_unsupported_precision": 33
+    },
+    "rebuild": {
+      "complete_live_runs_applied": 7,
+      "current_launch_records": 287,
+      "semantic_observation_events": 308,
+      "conflicts": 0,
+      "parquet_tables": 11,
+      "all_parquet_sha256_values_match_active": true
+    }
+  },
+  "bounded_filter_probe": {
+    "run_id": "correction-filter-verify-20261107",
+    "requests": 1,
+    "http_status": 200,
+    "endpoint": "/2.3.0/launches/previous/",
+    "parameters": {
+      "include_suborbital": "true",
+      "ordering": "-last_updated",
+      "last_updated__gte": "2026-11-06T09:07:00.694441+00:00",
+      "last_updated__lte": "2026-11-07T09:02:00.694441+00:00",
+      "limit": 1
+    },
+    "complete": false,
+    "merged_into_state": false,
+    "claim_limit": "The bounded query was accepted and returned a record; suborbital inclusion and complete filter behavior were not established."
+  },
+  "network_budget": {
+    "calls_during_step2_verification": 85,
+    "breakdown": {
+      "bounded_filter_probe": 1,
+      "refresh": 7,
+      "1957_two_pass": 2,
+      "history_1958_1963_successful": 12,
+      "history_transport_failures": 3,
+      "history_1964_1968_attempts_2026_11_08": 15,
+      "history_1968_1971_successful_2026_11_08": 15,
+      "history_1972_1975_successful_2026_11_08": 15
+    },
+    "last_successful_request_utc": "2026-11-08T12:16:31.638+00:00",
+    "current_hour_requests": {
+      "reserved": 15,
+      "http_200": 15,
+      "failed": 0,
+      "local_quota_remaining": 0,
+      "next_local_slot_utc": "2026-11-08T13:14:54.117+00:00",
+      "all_latest_batch_slots_reopen_utc": "2026-11-08T13:16:31.638+00:00"
+    },
+    "note": "The 2026-11-07 ledger reserved 15 attempts: 12 received HTTP 200 and three raised transport errors without an HTTP response; provider-side accounting of those failures is unknown. On 2026-11-08, three later 15-request batches used 45 reservations; all received HTTP 200. The latest batch completed matching passes for 1972-1974 and committed 1975 pass 1. Its 1975 pass-2 first page is retained at offset 100 and is not merged until complete. The local rolling ledger is exhausted until the recorded reservations age out. The ledger cannot see other consumers sharing the public IP.",
+    "last_successful_request_before_latest_batch_utc": "2026-11-08T11:06:27.986+00:00"
+  },
+  "limits": [
+    "Refresh source counts overlap across windows and are not additive distinct-launch totals.",
+    "The 90-day interval fact is a schedule-uncertainty view, not exact launch timing.",
+    "Historical acquisition is incomplete; 103 of the original 140 annual pass-windows are unresolved, including an incomplete 1975 second pass, before any dense-window splits or further reconciliation.",
+    "No worldwide completeness, reliability trend, reuse statistic, automated freshness SLA, cloud deployment or public release is claimed.",
+    "Remote GitHub CI and Linux validation have not run."
+  ],
+  "state_after_previous_batch_1967": {
+    "revision": 27,
+    "current_launch_records": 1072,
+    "record_sightings": 1994,
+    "semantic_observation_events": 1093,
+    "conflicts": 0,
+    "complete_plan_windows": 22,
+    "incomplete_windows": 118,
+    "partial_1968_response_is_not_merged": true
+  },
+  "state_export_after_previous_batch_1967": {
+    "generation_id": "revision-00000027-1caeddb9c65b",
+    "quality_passed": true,
+    "launch_record_current_rows": 1072,
+    "launch_observation_rows": 1093,
+    "fact_launch_attempt_rows": 776,
+    "fact_upcoming_schedule_rows": 179,
+    "coverage_unknown_orbital_scope": 72
+  },
+  "state_after_previous_batch_1971": {
+    "revision": 35,
+    "acquisitions": 35,
+    "current_launch_records": 1590,
+    "record_sightings": 3030,
+    "semantic_observation_events": 1611,
+    "conflicts": 0,
+    "complete_plan_windows": 30,
+    "incomplete_windows": 110,
+    "latest_complete_history_year": 1971,
+    "partial_1968_response_is_merged": true,
+    "raw_request_evidence_rows": 54
+  },
+  "current_state_after_2026_11_08_backfill": {
+    "revision": 42,
+    "acquisitions": 42,
+    "current_launch_records": 2067,
+    "record_sightings": 3852,
+    "semantic_observation_events": 2088,
+    "conflicts": 0,
+    "complete_plan_windows": 37,
+    "incomplete_windows": 103,
+    "latest_fully_reconciled_history_year": 1974,
+    "partial_1975_second_pass_is_not_merged": true,
+    "raw_request_evidence_rows": 68
+  },
+  "state_export_after_previous_batch_1971": {
+    "generation_id": "revision-00000035-65641ecfbfd7",
+    "quality_passed": true,
+    "launch_record_current_rows": 1590,
+    "launch_observation_rows": 1611,
+    "fact_launch_attempt_rows": 1278,
+    "fact_upcoming_schedule_rows": 179,
+    "coverage_unknown_orbital_scope": 88
+  }
+}

@@ -1,6 +1,6 @@
 # Metric contracts
 
-These contracts govern future marts. Only the sample launch outcome counts/share are computed now, from fact_launch_attempt without stage/family/payload joins. Sample counts are diagnostics, not worldwide headline findings.
+These contracts define release 1 metrics and distinguish the implemented initial marts from deferred calculations. The revision-27 dbt model set was built and tested in BigQuery scratch: daily launch/family outcome counts, stage-flight fields and upcoming schedule intervals are available there. Final reuse/landing rates, turnaround and schedule-movement calculations remain to implement. No reporting release or worldwide headline finding has been published; historical acquisition remains incomplete. The newer revision-42 local export has not yet been loaded to BigQuery.
 
 | Metric | Numerator / denominator | Scope, grain, time and exclusions |
 |---|---|---|
@@ -17,3 +17,12 @@ These contracts govern future marts. Only the sample launch outcome counts/share
 | Freshness | Source check, source update and published-release times separately | Run manifest observations are check evidence. A successful partial sample is not a completed full refresh. No published-release timestamp exists yet. |
 
 Future comparative views: full available history from 1957, primary comparisons from 2000. Compare current year to the same elapsed previous-year period. Always display classified denominator/sample sizes and unresolved counts. Store additive numerators/denominators in marts; compute ratios from their sums under filters. Do not average percentages, use Top-N as a total, or sum counts across overlapping family memberships.
+
+## Authored mart grains
+
+- `mart_launch_attempt_daily`: one row per snapshot, UTC launch date, provider, configuration and site. `attempt_count` and outcome counts are additive across those dimensions; group by null provider/site/configuration rather than dropping unknowns.
+- `mart_family_outcomes_daily`: one row per snapshot, UTC launch date and family. Each row counts distinct launches within that family; counts are non-additive across families because configurations can belong to multiple families.
+- `mart_stage_flight`: one row per snapshot, launch and source stage-flight association. It supports hardware/reuse exploration and is not a launch-count mart.
+- `mart_upcoming_schedule`: one supported launch schedule per snapshot horizon, retaining source precision and its derived half-open interval.
+
+The SQL defines these grains and tests launch-volume preservation against the core attempt table. Actual BigQuery execution, test results and independently compared metric values remain unverified until a cloud warehouse is available and authorized.

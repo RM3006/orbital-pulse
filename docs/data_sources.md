@@ -1,8 +1,10 @@
 # Sources and local contracts
 
+The dated observations below preserve Step 0–1 evidence. Step 2 current-state/precision semantics are implemented and summarized after the per-run grain table; see [architecture](../ARCHITECTURE.md) and [Step 2 verification](step2_verification.json) for current capability and extraction limits.
+
 Primary source: [Launch Library 2](https://thespacedevs.com/llapi), by The Space Devs, a community-maintained database. Production base `https://ll.thespacedevs.com/2.3.0/`. [OpenAPI schema](https://ll.thespacedevs.com/2.3.0/json), [FAQ](https://github.com/TheSpaceDevs/Tutorials/blob/main/faqs/faq_LL2.md), [terms](https://github.com/TheSpaceDevs/Tutorials/blob/main/faqs/faq_TSD.md#terms-of-use). Terms permit derived uses, discourage forwarding unchanged data, disclaim perfect accuracy and encourage attribution. Keep code and source-data licensing separate. Image licenses do not follow automatically from API access.
 
-Verified 2026-11-01, 16:52:28–16:52:44 UTC, using eight bounded GETs in scripts/verify_source.py (no retries). Public query/response checksums and timestamps are committed in source_verification.json; unchanged bodies are local in ignored data/source-spike. Do not rerun the probe casually: it consumes shared quota. Throttle observation: 15/hour/IP; /api-throttle itself is documented as unmetered. Schema/docs also take HTTP requests and are conservatively counted in our probe budget.
+Verified 2026-11-01, 16:52:28–16:52:44 UTC, using eight bounded GETs in scripts/verify_source.py (no retries). Public query/response checksums and timestamps are committed in source_verification.json; unchanged bodies are local in ignored data/source-spike. Do not rerun the probe casually: it consumes shared quota. LL2's [current API documentation](https://ll.thespacedevs.com/docs) states a 15-calls/hour limit for unauthenticated requests and documents `/api-throttle` for usage statistics. The local client independently enforces a shared rolling cap of 15/hour. Schema/docs are also conservatively counted in the local probe budget.
 
 Observed, not completeness claims:
 
@@ -29,7 +31,7 @@ Scope requires the source query's include_suborbital=false AND a supplied missio
 
 The installed CLI subsequently fetched a complete 1957 query (3 records, including a failure) and the complete source-NET-bounded upcoming window (106 records across two accepted pages). The first 100-record attempt timed out; its retry consumed the second request and checkpointed at offset=100. A one-request resume fetched the remaining six. This validates request-budget and replay behavior with real data, not stable-snapshot completeness. Of those 106 records, 19 have unknown orbital scope, including three HASTE records with mission=null. [Rocket Lab identifies HASTE as suborbital](https://rocketlabcorp.com/launch/haste/); no name-based override is applied. The remaining 87 have source-supported non-suborbital orbits, still not completed launch attempts.
 
-Upcoming precision distribution: Minute 5, Hour 9, Day 6, Month 10, Quarter 4: 13, Year Half 2: 1, Year 62. Month/quarter/year placeholders often use the period's last date (for example 2026-12-31). Preserve both value and label; a NET bound selects that placeholder, not the full possible launch interval. The rolling window may omit an overlapping coarse period when its placeholder falls outside. Phase 2 must settle interval-overlap semantics before a public manifest claims completeness.
+Upcoming precision distribution in the Step 1 run: Minute 5, Hour 9, Day 6, Month 10, Quarter 4: 13, Year Half 2: 1, Year 62. Month/quarter/year placeholders often use the period's last date (for example 2026-12-31). A NET bound selects that placeholder, not the full possible launch interval. Step 2 now uses a wider acquisition envelope and locally evaluates supported interval overlap; unknown precision remains coverage and prevents a completeness claim.
 
 Probe timestamp caveat: the one-time script recorded request-start timestamps under observed_at_utc. Operational acquisition was updated to stamp response receipt; early bootstrap run envelopes retain their originally captured times without retrospective fabrication.
 
@@ -48,6 +50,8 @@ Probe timestamp caveat: the one-time script recorded request-start timestamps un
 
 Typed UTC timestamps remain distinct for NET, source update, observation and source launch windows. Precision ID/name remains nullable; absent precision is not assumed second precision. Future times are schedules, not completed events. Source country metadata is current, not historical state attribution. Missing hardware/landing fields stay null; no reuse or landing denominator is inferred from an empty list. No payload table or public total is produced.
 
+The table above describes per-run normalization. Persistent Step 2 exports use `launch_record_current` at one accepted current row per `launch_id` across runs; `launch_observation` contains accepted transition events, including a return to earlier semantic content, with separate sightings/version provenance in SQLite. `fact_upcoming_schedule` has at most one row per `launch_id` per frozen export horizon, selected by supported half-open precision interval overlap. Launch attempts remain distinct launch IDs and are not multiplied by stage/family joins. The source/metric coverage policy remains conservative.
+
 The fixture is a documented, reduced six-record public subset. It can reproduce normalization offline; it cannot establish representative reliability or full extraction coverage. Synthetic edge cases exist only in tests.
 
-Future sources: GCAT for reviewed identifier crosswalks and measured payload coverage (CC BY 4.0); CelesTrak only for a defined orbital extension; account-gated ESA DISCOS only after terms/access validation. None is downloaded or required in Phase 1.
+Future sources: GCAT for reviewed identifier crosswalks and measured payload coverage (CC BY 4.0); CelesTrak only for a defined orbital extension; account-gated ESA DISCOS only after terms/access validation. None is downloaded or required in Step 1.
