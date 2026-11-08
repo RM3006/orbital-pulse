@@ -1,0 +1,5 @@
+# Examples only. This file is not loaded automatically.
+# Account/project, colocated location and monthly spend still require a decision.
+project_id      = "replace-with-project-id"
+location        = "EU"
+dataset_prefix  = "space_launch_atlas"
