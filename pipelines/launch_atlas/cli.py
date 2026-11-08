@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 from datetime import UTC, datetime, timedelta
 from importlib.metadata import version
@@ -99,6 +100,30 @@ def parser() -> argparse.ArgumentParser:
     warehouse_load.add_argument("--project-id", required=True)
     warehouse_load.add_argument("--dataset-prefix", default="space_launch_atlas")
     warehouse_load.add_argument("--location", required=True)
+    warehouse_run = commands.add_parser(
+        "warehouse-run", help="Cloud write: run load → dbt → checks; optionally activate reporting"
+    )
+    warehouse_run.add_argument("--project-id", default=os.getenv("GCP_PROJECT_ID"))
+    warehouse_run.add_argument("--location", default=os.getenv("GCP_LOCATION"))
+    warehouse_run.add_argument("--dataset-prefix", default="space_launch_atlas")
+    warehouse_run.add_argument("--reporting-dataset")
+    warehouse_run.add_argument("--reporting-prefix", default="")
+    warehouse_run.add_argument("--publish", action="store_true")
+    warehouse_run.add_argument(
+        "--expected-active", help="Expected release ID, or 'none' for first activation"
+    )
+    warehouse_run.add_argument("--refresh-plan-id")
+    warehouse_run.add_argument("--max-requests", type=int, default=2)
+    rollback = commands.add_parser(
+        "warehouse-rollback", help="Cloud write: select a retained verified release"
+    )
+    rollback.add_argument("--project-id", default=os.getenv("GCP_PROJECT_ID"))
+    rollback.add_argument("--location", default=os.getenv("GCP_LOCATION"))
+    rollback.add_argument("--dataset-prefix", default="space_launch_atlas")
+    rollback.add_argument("--reporting-dataset")
+    rollback.add_argument("--reporting-prefix", default="")
+    rollback.add_argument("--release-id", required=True)
+    rollback.add_argument("--expected-active", required=True)
     plan_backfill = commands.add_parser(
         "plan-backfill", help="Offline: freeze two historical passes into yearly windows"
     )
@@ -150,6 +175,8 @@ def parser() -> argparse.ArgumentParser:
                 "input-snapshot",
                 "warehouse-prepare",
                 "warehouse-load",
+                "warehouse-run",
+                "warehouse-rollback",
                 "plan-backfill",
                 "plan-refresh",
                 "plan-reconcile",
@@ -173,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         overrides["data_dir"] = arguments.data_dir
     if arguments.command in ("smoke", "backfill"):
         overrides.update(max_requests=arguments.max_requests, page_size=arguments.page_size)
-    elif arguments.command == "run-plan":
+    elif arguments.command in ("run-plan", "warehouse-run"):
         overrides["max_requests"] = arguments.max_requests
     try:
         settings = Settings.from_env(**overrides)
@@ -262,6 +289,57 @@ def main(argv: list[str] | None = None) -> int:
                 arguments.project_id
             )
             result = execute_load_plan(plan, loader)
+            print(json.dumps(result, indent=2))
+            return 0
+        if arguments.command in ("warehouse-run", "warehouse-rollback"):
+            from google.cloud import bigquery
+
+            from launch_atlas.warehouse.reporting import BigQueryReportingStore
+
+            if not arguments.project_id or not arguments.location:
+                raise ValueError("Provide GCP_PROJECT_ID/GCP_LOCATION or explicit project/location")
+            target = CloudTarget(arguments.project_id, arguments.dataset_prefix, arguments.location)
+            client = bigquery.Client(project=target.project_id)
+            reporting = BigQueryReportingStore(
+                client,
+                target.project_id,
+                arguments.reporting_dataset or target.dataset_prefix + "_reporting",
+                target.location,
+                candidate_dataset=target.dataset_prefix + "_scratch",
+                table_prefix=arguments.reporting_prefix,
+                maximum_bytes_billed=100_000_000,
+            )
+            if arguments.command == "warehouse-rollback":
+                from launch_atlas.warehouse.releases import rollback_release
+
+                result = rollback_release(
+                    arguments.release_id, reporting, arguments.expected_active
+                )
+            else:
+                from launch_atlas.warehouse.orchestration import execute_warehouse_pipeline
+                from launch_atlas.warehouse.runner import DbtBuilder, WarehousePipeline
+
+                if arguments.publish and arguments.expected_active is None:
+                    raise ValueError(
+                        "--publish requires --expected-active (use 'none' for first activation)"
+                    )
+                pipeline = WarehousePipeline(
+                    settings,
+                    target,
+                    GoogleBigQuerySourceLoader(client, target.project_id),
+                    DbtBuilder(target.dataset_prefix + "_scratch"),
+                    reporting,
+                    publish=arguments.publish,
+                    expected_active=None
+                    if arguments.expected_active == "none"
+                    else arguments.expected_active,
+                    refresh_plan_id=arguments.refresh_plan_id,
+                )
+                execution = execute_warehouse_pipeline(pipeline)
+                if not execution.success:
+                    print(json.dumps({"status": "failed", "run_dir": str(pipeline.run_dir)}))
+                    return 1
+                result = execution.output_for_node("activate_reporting_release")
             print(json.dumps(result, indent=2))
             return 0
         if arguments.command == "rebuild-state":

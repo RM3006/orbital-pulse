@@ -10,7 +10,11 @@ import json
 import re
 from typing import Any
 
-from launch_atlas.warehouse.releases import RELEASE_ID_PATTERN, ReleaseManifest
+from launch_atlas.warehouse.releases import (
+    RELEASE_ID_PATTERN,
+    ReleaseManifest,
+    validate_release_manifest,
+)
 
 IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,1023}$")
 PROJECT_PATTERN = re.compile(r"^[a-z][a-z0-9-]{4,28}[a-z0-9]$")
@@ -81,7 +85,7 @@ class BigQueryReleaseBackend:
                 [
                     bigquery.SchemaField("release_id", "STRING", mode="REQUIRED"),
                     bigquery.SchemaField("manifest_sha256", "STRING", mode="REQUIRED"),
-                    bigquery.SchemaField("validated", "BOOL", mode="REQUIRED"),
+                    bigquery.SchemaField("validated", "BOOLEAN", mode="REQUIRED"),
                     bigquery.SchemaField("manifest_json", "STRING", mode="REQUIRED"),
                     bigquery.SchemaField("created_at", "TIMESTAMP", mode="REQUIRED"),
                 ],
@@ -151,6 +155,7 @@ class BigQueryReleaseBackend:
     ) -> bool:
         if not manifest.validated or not RELEASE_ID_PATTERN.fullmatch(manifest.release_id):
             raise ValueError("Only a valid release manifest can be published")
+        validate_release_manifest(manifest)
         parameters = [
             ("release_id", "STRING", manifest.release_id),
             ("manifest_sha256", "STRING", manifest.manifest_sha256),
@@ -208,7 +213,9 @@ SELECT committed AS committed;""",
             raise RuntimeError("BigQuery contains duplicate release manifest rows")
         if not rows:
             return None
-        return ReleaseManifest(**json.loads(rows[0].manifest_json))
+        manifest = ReleaseManifest(**json.loads(rows[0].manifest_json))
+        validate_release_manifest(manifest)
+        return manifest
 
     def activate_retained(self, release_id: str, expected_current_release_id: str | None) -> bool:
         rows = self._query(

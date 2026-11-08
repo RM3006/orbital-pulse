@@ -99,12 +99,13 @@ def test_load_plan_tags_nonempty_snapshot_rows_with_explicit_schema(tmp_path: Pa
         "outcome",
         "input_snapshot_id",
     }
-    provider = pl.read_parquet(
-        data_dir / "warehouse" / "prepared" / snapshot_id / "tables" / "dim_provider.parquet"
+    provider_load = next(table for table in plan.tables if table.table_name == "dim_provider")
+    provider_artifact = next(
+        item for item in plan.local_artifacts if item.artifact_name == provider_load.artifact_name
     )
+    provider = pl.read_parquet(provider_artifact.local_path)
     assert provider.height > 0
     assert provider["input_snapshot_id"].unique().to_list() == [snapshot_id]
-    provider_load = next(table for table in plan.tables if table.table_name == "dim_provider")
     assert (
         next(field for field in provider_load.schema if field["name"] == "country_codes")["mode"]
         == "REPEATED"
@@ -143,6 +144,16 @@ def test_dagster_local_prepare_job_graph_is_wired_without_cloud() -> None:
     assert graph.node_names() == ["pin_warehouse_inputs", "prepare_warehouse_plan"]
     dependency = cast(Any, dependencies["prepare_warehouse_plan"]["pinned_inputs"])
     assert dependency.node == "pin_warehouse_inputs"
+
+
+def test_short_prepared_path_rejects_snapshot_prefix_collision(tmp_path: Path) -> None:
+    data_dir, snapshot_id, plan = make_load_plan(tmp_path)
+    artifact = next(item for item in plan.local_artifacts if item.kind == "snapshot_table")
+    identity = artifact.local_path.parent.parent / "snapshot.json"
+    assert len(identity.parent.name) == 24
+    identity.write_text(json.dumps({"snapshot_id": "another-snapshot"}))
+    with pytest.raises(ValueError, match="prefix collision"):
+        prepare_load_plan(data_dir, snapshot_id)
 
 
 def test_local_integrity_and_load_retry_are_idempotent(tmp_path: Path) -> None:

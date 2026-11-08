@@ -15,11 +15,26 @@ def block_network(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureReques
     ):
         return
 
-    def blocked(*args: Any, **kwargs: Any) -> None:
+    original_connect = socket.socket.connect
+    original_connect_ex = socket.socket.connect_ex
+
+    def allowed_loopback(address: Any) -> bool:
+        return bool(request.node.get_closest_marker("local_asyncio")) and (
+            isinstance(address, tuple) and address[0] in ("127.0.0.1", "::1")
+        )
+
+    def blocked(sock: Any, address: Any, *args: Any, **kwargs: Any) -> Any:
+        if allowed_loopback(address):
+            return original_connect(sock, address, *args, **kwargs)
+        raise AssertionError("Default tests must not use the network")
+
+    def blocked_ex(sock: Any, address: Any, *args: Any, **kwargs: Any) -> Any:
+        if allowed_loopback(address):
+            return original_connect_ex(sock, address, *args, **kwargs)
         raise AssertionError("Default tests must not use the network")
 
     monkeypatch.setattr(socket.socket, "connect", blocked)
-    monkeypatch.setattr(socket.socket, "connect_ex", blocked)
+    monkeypatch.setattr(socket.socket, "connect_ex", blocked_ex)
 
 
 @pytest.fixture

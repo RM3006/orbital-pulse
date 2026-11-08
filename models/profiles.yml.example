@@ -14,4 +14,4 @@ space_launch_atlas:
       threads: 1
       job_retries: 1
       job_execution_timeout_seconds: 1800
-      maximum_bytes_billed: 1000000000
+      maximum_bytes_billed: "{{ env_var('DBT_MAXIMUM_BYTES_BILLED', '1000000000') | int }}"

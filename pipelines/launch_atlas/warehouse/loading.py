@@ -22,7 +22,7 @@ from launch_atlas.storage.local import LocalStore, atomic_json, digest_file, rea
 SNAPSHOT_ID_PATTERN = re.compile(r"^sla-input-v1-[a-f0-9]{64}$")
 GENERATION_ID_PATTERN = re.compile(r"^revision-[0-9]{8}-[A-Za-z0-9]+$")
 TABLE_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
-LOAD_CONTRACT_VERSION = 2
+LOAD_CONTRACT_VERSION = 3
 
 
 def _canonical_hash(value: Any) -> str:
@@ -37,6 +37,7 @@ class CloudTarget:
     project_id: str = "placeholder-project"
     dataset_prefix: str = "space_launch_atlas"
     location: str = "replace-with-colocated-location"
+    source_dataset: str | None = None
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[a-z][a-z0-9-]{4,28}[a-z0-9]", self.project_id):
@@ -47,8 +48,12 @@ class CloudTarget:
             raise ValueError("Dataset prefix must start with a lowercase letter")
         if not self.location.strip() or self.location != self.location.strip():
             raise ValueError("Location must be explicit and contain no surrounding whitespace")
+        if self.source_dataset is not None and not re.fullmatch(
+            r"[a-z][a-z0-9_]{0,100}", self.source_dataset
+        ):
+            raise ValueError("Invalid source dataset override")
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -298,7 +303,13 @@ def prepare_load_plan(
     snapshot = _verify_snapshot(local, snapshot_id)
     source_table_prefix = f"sla_{snapshot_id.rsplit('-', 1)[-1][:24]}"
     generation = local.root / "exports" / "generations" / snapshot["export"]["generation_id"]
-    prepared_tables = local.root / "warehouse" / "prepared" / snapshot_id / "tables"
+    prepared_root = local.root / "warehouse" / "prepared" / snapshot_id.rsplit("-", 1)[-1][:24]
+    identity_path = prepared_root / "snapshot.json"
+    prepared_root.mkdir(parents=True, exist_ok=True)
+    if identity_path.exists() and read_json(identity_path).get("snapshot_id") != snapshot_id:
+        raise ValueError("Prepared directory hash-prefix collision")
+    atomic_json(identity_path, {"snapshot_id": snapshot_id})
+    prepared_tables = prepared_root / "tables"
     prepared_tables.mkdir(parents=True, exist_ok=True)
     objects: dict[str, LocalArtifact] = {}
     table_loads: list[TableLoad] = []
@@ -356,9 +367,8 @@ def prepare_load_plan(
         )
         schema = tuple(_bigquery_field(name, dtype) for name, dtype in frame.schema.items())
         schema_version = _canonical_hash(schema)
-        destination = (
-            f"{target.project_id}.{target.dataset_prefix}_source.{source_table_prefix}_{table_name}"
-        )
+        source_dataset = target.source_dataset or target.dataset_prefix + "_source"
+        destination = f"{target.project_id}.{source_dataset}.{source_table_prefix}_{table_name}"
         job_hash = _canonical_hash(
             {
                 "snapshot_id": snapshot_id,
@@ -381,14 +391,20 @@ def prepare_load_plan(
         )
 
     source_plans = snapshot["state"].get("plans", [])
-    release_eligible = bool(source_plans) and all(
-        plan.get("status") == "complete"
-        and not any(
-            name in ("planned", "split", "reconciliation_required", "conflict", "unstable")
-            and count
-            for name, count in plan.get("windows", {}).items()
+    release_eligible = (
+        bool(source_plans)
+        and all(
+            plan.get("status") == "complete"
+            and any(
+                name == "committed" and count for name, count in plan.get("windows", {}).items()
+            )
+            and not any(
+                name not in ("committed", "split") and count
+                for name, count in plan.get("windows", {}).items()
+            )
+            for plan in source_plans
         )
-        for plan in source_plans
+        and snapshot["state"]["row_counts"].get("state_conflict", 0) == 0
     )
     plan_identity = {
         "contract_version": LOAD_CONTRACT_VERSION,

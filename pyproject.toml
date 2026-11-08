@@ -56,4 +56,5 @@ addopts = '-ra -m "not integration and not live"'
 markers = [
   "integration: warehouse integration (not yet implemented)",
   "live: explicit public API access",
+  "local_asyncio: allow only local loopback sockets for Windows asyncio/Dagster execution",
 ]

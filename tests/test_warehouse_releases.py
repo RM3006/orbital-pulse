@@ -4,20 +4,26 @@ from dataclasses import replace
 
 import pytest
 from launch_atlas.warehouse.releases import (
+    REQUIRED_REPORTING_TABLES,
     CandidateEvidence,
     CandidateRejected,
     ReleaseManifest,
     StalePublisher,
+    build_release_manifest,
     publish_candidate,
     rollback_release,
+    validate_release_manifest,
 )
 
 SNAPSHOT_ID = "sla-input-v1-" + "a" * 64
 ROW_COUNTS = {
-    "mart_launch_attempt_daily": 12,
-    "mart_family_outcomes_daily": 8,
-    "mart_stage_flight": 10,
-    "mart_upcoming_schedule": 4,
+    **dict.fromkeys(REQUIRED_REPORTING_TABLES, 1),
+    **{
+        "mart_launch_attempt_daily": 12,
+        "mart_family_outcomes_daily": 8,
+        "mart_stage_flight": 10,
+        "mart_upcoming_schedule": 4,
+    },
 }
 
 
@@ -41,6 +47,7 @@ def evidence(invocation_id: str = "dbt-run-a") -> CandidateEvidence:
         candidate_validation_errors=(),
         reporting_row_counts=ROW_COUNTS,
         analysis_as_of_utc="2026-11-07T00:00:00Z",
+        reporting_content_sha256=dict.fromkeys(REQUIRED_REPORTING_TABLES, "e" * 64),
     )
 
 
@@ -155,6 +162,7 @@ def test_candidate_requires_complete_load_nonempty_test_run_and_all_marts() -> N
     cases: list[tuple[CandidateEvidence, str]] = [
         (replace(evidence(), load_receipt={"status": "failed"}), "not ready"),
         (replace(evidence(), dbt_test_count=0), "no executed dbt tests"),
+        (replace(evidence(), reporting_content_sha256={}), "content checksums"),
         (
             replace(evidence(), reporting_row_counts={"mart_launch_attempt_daily": 1}),
             "missing one or more",
@@ -170,3 +178,10 @@ def test_candidate_requires_complete_load_nonempty_test_run_and_all_marts() -> N
         with pytest.raises(CandidateRejected, match=message):
             publish_candidate(candidate, backend, expected_previous_release_id=None)
     assert backend.publish_calls == 0
+
+
+def test_corrupted_retained_manifest_identity_is_rejected() -> None:
+    manifest = build_release_manifest(evidence())
+    validate_release_manifest(manifest)
+    with pytest.raises(CandidateRejected, match="identity/checksum"):
+        validate_release_manifest(replace(manifest, dbt_invocation_id="tampered"))

@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 from launch_atlas.warehouse.releases import (
+    REQUIRED_REPORTING_TABLES,
     CandidateEvidence,
     ReleaseManifest,
     build_release_manifest,
@@ -31,12 +32,8 @@ def synthetic_release(name: str) -> ReleaseManifest:
         dbt_test_failures=0,
         candidate_validation_passed=True,
         candidate_validation_errors=(),
-        reporting_row_counts={
-            "mart_launch_attempt_daily": 1,
-            "mart_family_outcomes_daily": 1,
-            "mart_stage_flight": 1,
-            "mart_upcoming_schedule": 1,
-        },
+        reporting_row_counts=dict.fromkeys(REQUIRED_REPORTING_TABLES, 1),
+        reporting_content_sha256=dict.fromkeys(REQUIRED_REPORTING_TABLES, "e" * 64),
         analysis_as_of_utc="2026-11-08T00:00:00Z",
     )
     return build_release_manifest(evidence)
@@ -115,6 +112,7 @@ def test_bigquery_scratch_release_publish_cas_and_rollback(tmp_path: Path) -> No
         pointer_table=f"sla_test_active_{suffix}",
     )
     backend.ensure_tables()
+    backend.ensure_tables()  # API normalizes BOOL to BOOLEAN; repeated runs must accept it.
     release_a = synthetic_release(f"a-{suffix}")
     release_b = synthetic_release(f"b-{suffix}")
     release_c = synthetic_release(f"c-{suffix}")

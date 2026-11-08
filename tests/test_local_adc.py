@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -80,12 +81,21 @@ def test_client_json_must_be_desktop_app_using_google_endpoints(tmp_path: Path) 
         read_desktop_client(source)
 
 
-def test_dbt_adapter_recognizes_the_profile_scope_restriction() -> None:
+def test_dbt_adapter_recognizes_the_profile_scope_restriction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     yaml = pytest.importorskip("yaml")
     adapter = pytest.importorskip("dbt.adapters.bigquery.credentials")
+    from dbt.config.renderer import ProfileRenderer
+    from dbt_common.context import set_invocation_context
+
+    monkeypatch.setenv("DBT_MAXIMUM_BYTES_BILLED", "100000000")
+    set_invocation_context(os.environ)
     profile = Path(__file__).parents[1] / "models" / "profiles.yml.example"
     output = yaml.safe_load(profile.read_text())["space_launch_atlas"]["outputs"]["local"]
+    output = ProfileRenderer().render_data(output)
     parsed = adapter.BigQueryCredentials.from_dict(
         adapter.BigQueryCredentials.translate_aliases(output)
     )
+    assert parsed.maximum_bytes_billed == 100_000_000
     assert tuple(parsed.scopes) == (BIGQUERY_SCOPE,)
