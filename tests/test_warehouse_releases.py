@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 import pytest
+from launch_atlas.warehouse.bigquery_releases import BigQueryReleaseBackend
 from launch_atlas.warehouse.releases import (
     REQUIRED_REPORTING_TABLES,
     CandidateEvidence,
@@ -11,6 +12,7 @@ from launch_atlas.warehouse.releases import (
     StalePublisher,
     build_release_manifest,
     publish_candidate,
+    reporting_volume_drift_errors,
     rollback_release,
     validate_release_manifest,
 )
@@ -100,6 +102,45 @@ def test_failed_first_candidate_never_creates_active_release() -> None:
     assert backend.active is None
     assert backend.releases == {}
     assert backend.publish_calls == 0
+
+
+def test_preview_manifest_cannot_publish_to_production() -> None:
+    candidate = evidence()
+    partial = replace(candidate, load_receipt={**candidate.load_receipt, "release_eligible": False})
+    with pytest.raises(CandidateRejected, match="complete reporting release"):
+        build_release_manifest(partial)
+
+    manifest = build_release_manifest(replace(partial, preview=True))
+    assert manifest.to_dict()["preview"] is True
+    validate_release_manifest(manifest)
+    with pytest.raises(CandidateRejected, match="identity/checksum"):
+        validate_release_manifest(replace(manifest, preview=False))
+
+    production = BigQueryReleaseBackend(object(), "atlas-test-project", "reporting", "US")
+    with pytest.raises(CandidateRejected, match="reserved scratch namespace"):
+        production.publish_validated(manifest, None)
+
+
+def test_reporting_volume_drift_uses_ten_percent_or_five_row_floor() -> None:
+    previous = dict(ROW_COUNTS)
+    candidate = dict(previous)
+    candidate["mart_launch_attempt_daily"] += 5
+    assert reporting_volume_drift_errors(candidate, previous) == ()
+
+    candidate["mart_launch_attempt_daily"] += 1
+    errors = reporting_volume_drift_errors(candidate, previous)
+    assert len(errors) == 1
+    assert "changed from 12 to 18" in errors[0]
+    assert "allowed 5-row change" in errors[0]
+
+    previous["mart_launch_attempt_daily"] = 100
+    candidate = dict(previous)
+    candidate["mart_launch_attempt_daily"] = 110
+    assert reporting_volume_drift_errors(candidate, previous) == ()
+    candidate["mart_launch_attempt_daily"] = 111
+    errors = reporting_volume_drift_errors(candidate, previous)
+    assert len(errors) == 1
+    assert "allowed 10-row change" in errors[0]
 
 
 def test_failed_candidate_preserves_release_and_valid_release_can_be_rolled_back() -> None:

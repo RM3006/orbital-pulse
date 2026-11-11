@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -25,14 +26,17 @@ from launch_atlas.warehouse.loading import (
     prepare_load_plan,
 )
 from launch_atlas.warehouse.releases import (
+    PREVIEW_TABLE_PREFIX,
     REQUIRED_REPORTING_TABLES,
     CandidateEvidence,
     CandidateRejected,
     ReleaseManifest,
     build_release_manifest,
     publish_candidate,
+    reporting_volume_drift_errors,
 )
 from launch_atlas.warehouse.reporting import BigQueryReportingStore
+from launch_atlas.worker import worker_lock
 
 
 @dataclass(frozen=True)
@@ -185,11 +189,23 @@ class WarehousePipeline:
         publish: bool = False,
         expected_active: str | None = None,
         refresh_plan_id: str | None = None,
+        preview: bool = False,
     ) -> None:
+        scratch = target.dataset_prefix + "_scratch"
+        if preview and (
+            not publish
+            or refresh_plan_id
+            or target.source_dataset != scratch
+            or reporting.dataset_id != scratch
+            or reporting.candidate_dataset != scratch
+            or reporting.table_prefix != PREVIEW_TABLE_PREFIX
+        ):
+            raise ValueError("Preview activation requires accepted local data and scratch only")
         self.settings, self.target, self.loader = settings, target, loader
         self.builder, self.reporting = builder, reporting
         self.publish, self.expected_active = publish, expected_active
         self.refresh_plan_id = refresh_plan_id
+        self.preview = preview
         self.run_dir = settings.data_dir.resolve() / "warehouse" / "runs" / uuid4().hex
         self.run_dir.mkdir(parents=True)
         self.candidate_prefix = "sla_candidate_" + self.run_dir.name[:16] + "_"
@@ -209,9 +225,16 @@ class WarehousePipeline:
     def pin(self, accepted: dict[str, Any]) -> LoadPlan:
         if not accepted.get("accepted_state"):
             raise CandidateRejected("Acquisition did not complete")
-        export_current(self.settings)
-        snapshot = create_input_snapshot(self.settings)
-        return prepare_load_plan(self.settings.data_dir, snapshot["input_snapshot_id"], self.target)
+        lock = worker_lock(self.settings.data_dir / "worker") if self.preview else nullcontext()
+        with lock:
+            export_current(self.settings)
+            snapshot = create_input_snapshot(self.settings)
+        if self.preview and snapshot["state"]["row_counts"]["state_conflict"]:
+            raise CandidateRejected("Preview snapshot has unresolved source conflicts")
+        plan = prepare_load_plan(self.settings.data_dir, snapshot["input_snapshot_id"], self.target)
+        if self.preview and plan.release_eligible:
+            raise CandidateRejected("Preview activation expects an incomplete history snapshot")
+        return plan
 
     def load(self, plan: LoadPlan) -> dict[str, Any]:
         receipt = execute_load_plan(plan, self.loader)
@@ -221,6 +244,12 @@ class WarehousePipeline:
         plan = loaded["plan"]
         build = self.builder.build(plan, self.run_dir, self.candidate_prefix)
         counts, hashes = self.reporting.inspect_candidate(build.relations, plan.snapshot_id)
+        previous_release = self.reporting.active_release_manifest()
+        validation_errors = (
+            reporting_volume_drift_errors(counts, previous_release.reporting_row_counts)
+            if previous_release is not None
+            else ()
+        )
         snapshot = read_json(self.settings.data_dir / "snapshots" / f"{plan.snapshot_id}.json")
         as_of = snapshot["export"]["coverage"]["upcoming_as_of_utc"]
         evidence = CandidateEvidence(
@@ -232,11 +261,12 @@ class WarehousePipeline:
             dbt_run_status="success",
             dbt_test_count=build.test_count,
             dbt_test_failures=0,
-            candidate_validation_passed=True,
-            candidate_validation_errors=(),
+            candidate_validation_passed=not validation_errors,
+            candidate_validation_errors=validation_errors,
             reporting_row_counts=counts,
             analysis_as_of_utc=as_of,
             reporting_content_sha256=hashes,
+            preview=self.preview,
         )
         from dataclasses import asdict
 
@@ -252,6 +282,8 @@ class WarehousePipeline:
                 "release_eligible": evidence.load_receipt["release_eligible"],
                 "reporting_row_counts": evidence.reporting_row_counts,
                 "dbt_test_count": evidence.dbt_test_count,
+                "candidate_validation_passed": evidence.candidate_validation_passed,
+                "candidate_validation_errors": evidence.candidate_validation_errors,
             }
         # The eligibility gate runs before any reporting table/view is created or changed.
         manifest = build_release_manifest(evidence)
@@ -264,6 +296,14 @@ class WarehousePipeline:
             result: dict[str, Any] = publish_candidate(
                 retained["evidence"], self.reporting, self.expected_active
             )
+            if manifest.preview:
+                result.update(
+                    preview=True,
+                    release_eligible=False,
+                    input_snapshot_id=manifest.input_snapshot_id,
+                    reporting_row_counts=manifest.reporting_row_counts,
+                    dbt_test_count=manifest.dbt_test_count,
+                )
             atomic_json(self.run_dir / "release-manifest.json", manifest.to_dict())
         else:
             result = retained

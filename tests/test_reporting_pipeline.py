@@ -21,6 +21,7 @@ from launch_atlas.warehouse.loading import (
     TableReceipt,
 )
 from launch_atlas.warehouse.releases import (
+    PREVIEW_TABLE_PREFIX,
     REQUIRED_REPORTING_TABLES,
     CandidateRejected,
     ReleaseManifest,
@@ -99,15 +100,19 @@ class OfflineBuilder:
 
 class OfflineReporting:
     def __init__(self) -> None:
+        self.dataset_id = "space_launch_atlas_reporting"
+        self.candidate_dataset = "space_launch_atlas_scratch"
+        self.table_prefix = ""
         self.active: str | None = None
         self.retained: dict[str, ReleaseManifest] = {}
+        self.candidate_counts = dict.fromkeys(REQUIRED_REPORTING_TABLES, 1)
         self.job_evidence: list[dict[str, Any]] = []
         self.retain_calls = 0
         self.fail_retention = False
 
     def inspect_candidate(self, relations: dict[str, str], snapshot_id: str):
         assert set(relations) == REQUIRED_REPORTING_TABLES
-        return dict.fromkeys(relations, 1), dict.fromkeys(relations, "c" * 64)
+        return dict(self.candidate_counts), dict.fromkeys(relations, "c" * 64)
 
     def retain_candidate(self, manifest: ReleaseManifest, relations: dict[str, str]) -> None:
         self.retain_calls += 1
@@ -118,6 +123,14 @@ class OfflineReporting:
     def active_release_id(self) -> str | None:
         return self.active
 
+    def active_release_manifest(self) -> ReleaseManifest | None:
+        if self.active is None:
+            return None
+        manifest = self.retained_release(self.active)
+        if manifest is None:
+            raise CandidateRejected("Active release pointer has no validated retained manifest")
+        return manifest
+
     def retained_release(self, release_id: str) -> ReleaseManifest | None:
         return self.retained.get(release_id)
 
@@ -127,6 +140,30 @@ class OfflineReporting:
             return False
         self.active = manifest.release_id
         return True
+
+
+def test_missing_production_pointer_is_a_first_release_without_table_creation() -> None:
+    from google.api_core.exceptions import NotFound
+
+    class MissingPointerClient:
+        def __init__(self) -> None:
+            self.lookups = 0
+
+        def get_table(self, table_id: str) -> None:
+            self.lookups += 1
+            raise NotFound(f"Missing table {table_id}")
+
+    client = MissingPointerClient()
+    reporting = BigQueryReportingStore(
+        client,
+        "atlas-test-project",
+        "space_launch_atlas_reporting",
+        "US",
+        candidate_dataset="space_launch_atlas_scratch",
+    )
+
+    assert reporting.active_release_manifest() is None
+    assert client.lookups == 1
 
 
 def execute(pipeline: WarehousePipeline, raise_on_error: bool = True):
@@ -171,6 +208,48 @@ def test_full_dagster_chain_and_failures_preserve_last_good_data(tmp_path: Path)
 
 
 @pytest.mark.local_asyncio
+def test_reporting_volume_drift_blocks_publication_and_preserves_active_release(
+    tmp_path: Path,
+) -> None:
+    settings = complete_scope(tmp_path / "accepted")
+    reporting = OfflineReporting()
+    first = WarehousePipeline(
+        settings,
+        CloudTarget(),
+        OfflineLoader(),
+        OfflineBuilder(),
+        cast(Any, reporting),
+        publish=True,
+    )
+    assert execute(first).success
+    active_before = reporting.active
+    assert active_before is not None
+    retained_before = reporting.retained[active_before]
+
+    reporting.candidate_counts["mart_launch_attempt_daily"] = 7
+    candidate = WarehousePipeline(
+        settings,
+        CloudTarget(),
+        OfflineLoader(),
+        OfflineBuilder(),
+        cast(Any, reporting),
+        publish=True,
+        expected_active=active_before,
+    )
+    result = execute(candidate, raise_on_error=False)
+
+    assert not result.success
+    assert reporting.active == active_before
+    assert reporting.retained[active_before] == retained_before
+    evidence = json.loads((candidate.run_dir / "candidate-evidence.json").read_text())
+    assert evidence["candidate_validation_passed"] is False
+    assert (
+        "mart_launch_attempt_daily row count changed from 1 to 7"
+        in evidence["candidate_validation_errors"][0]
+    )
+
+
+@pytest.mark.local_asyncio
 def test_incomplete_history_builds_but_cannot_retain_or_activate(tmp_path: Path) -> None:
     settings = complete_scope(tmp_path / "accepted")
     StateStore(settings.data_dir).set_plan_status("fixture-history", "in_progress")
@@ -196,6 +275,44 @@ def test_incomplete_history_builds_but_cannot_retain_or_activate(tmp_path: Path)
     output = built.output_for_node("activate_reporting_release")
     assert output["status"] == "candidate_built"
     assert output["release_eligible"] is False
+
+
+@pytest.mark.local_asyncio
+def test_incomplete_real_fixture_can_activate_only_as_scratch_preview(tmp_path: Path) -> None:
+    settings = complete_scope(tmp_path / "accepted")
+    StateStore(settings.data_dir).set_plan_status("fixture-history", "in_progress")
+    reporting = OfflineReporting()
+    scratch = reporting.candidate_dataset
+    target = CloudTarget(source_dataset=scratch)
+
+    with pytest.raises(ValueError, match="scratch only"):
+        WarehousePipeline(
+            settings,
+            target,
+            OfflineLoader(),
+            OfflineBuilder(),
+            cast(Any, reporting),
+            publish=True,
+            preview=True,
+        )
+
+    reporting.dataset_id = scratch
+    reporting.table_prefix = PREVIEW_TABLE_PREFIX
+    pipeline = WarehousePipeline(
+        settings,
+        target,
+        OfflineLoader(),
+        OfflineBuilder(),
+        cast(Any, reporting),
+        publish=True,
+        preview=True,
+    )
+    result = execute(pipeline).output_for_node("activate_reporting_release")
+    assert result["status"] == "published"
+    assert result["preview"] is True
+    assert result["release_eligible"] is False
+    assert reporting.active == result["release_id"]
+    assert reporting.retained[result["release_id"]].to_dict()["preview"] is True
 
 
 def test_dbt_evidence_rejects_skipped_tests_and_wrong_candidate_relations(tmp_path: Path) -> None:

@@ -110,6 +110,11 @@ def parser() -> argparse.ArgumentParser:
     warehouse_run.add_argument("--reporting-prefix", default="")
     warehouse_run.add_argument("--publish", action="store_true")
     warehouse_run.add_argument(
+        "--preview",
+        action="store_true",
+        help="With --publish: activate partial history in the expiring scratch preview namespace",
+    )
+    warehouse_run.add_argument(
         "--expected-active", help="Expected release ID, or 'none' for first activation"
     )
     warehouse_run.add_argument("--refresh-plan-id")
@@ -337,19 +342,38 @@ def main(argv: list[str] | None = None) -> int:
         if arguments.command in ("warehouse-run", "warehouse-rollback"):
             from google.cloud import bigquery
 
+            from launch_atlas.warehouse.releases import PREVIEW_TABLE_PREFIX
             from launch_atlas.warehouse.reporting import BigQueryReportingStore
 
             if not arguments.project_id or not arguments.location:
                 raise ValueError("Provide GCP_PROJECT_ID/GCP_LOCATION or explicit project/location")
-            target = CloudTarget(arguments.project_id, arguments.dataset_prefix, arguments.location)
+            preview = arguments.command == "warehouse-run" and arguments.preview
+            if preview and (
+                not arguments.publish
+                or arguments.refresh_plan_id
+                or arguments.reporting_dataset
+                or arguments.reporting_prefix
+            ):
+                raise ValueError(
+                    "--preview requires --publish, local accepted data and the scratch namespace"
+                )
+            scratch = arguments.dataset_prefix + "_scratch"
+            target = CloudTarget(
+                arguments.project_id,
+                arguments.dataset_prefix,
+                arguments.location,
+                source_dataset=scratch if preview else None,
+            )
             client = bigquery.Client(project=target.project_id)
             reporting = BigQueryReportingStore(
                 client,
                 target.project_id,
-                arguments.reporting_dataset or target.dataset_prefix + "_reporting",
+                scratch
+                if preview
+                else arguments.reporting_dataset or target.dataset_prefix + "_reporting",
                 target.location,
-                candidate_dataset=target.dataset_prefix + "_scratch",
-                table_prefix=arguments.reporting_prefix,
+                candidate_dataset=scratch,
+                table_prefix=PREVIEW_TABLE_PREFIX if preview else arguments.reporting_prefix,
                 maximum_bytes_billed=100_000_000,
             )
             if arguments.command == "warehouse-rollback":
@@ -377,6 +401,7 @@ def main(argv: list[str] | None = None) -> int:
                     if arguments.expected_active == "none"
                     else arguments.expected_active,
                     refresh_plan_id=arguments.refresh_plan_id,
+                    preview=preview,
                 )
                 execution = execute_warehouse_pipeline(pipeline)
                 if not execution.success:
