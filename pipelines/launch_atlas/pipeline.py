@@ -212,6 +212,15 @@ def run_plan(
             and source_count > threshold
         ):
             count = split_history_year(state, settings, window_row)
+            manifest.update(
+                {
+                    "plan_id": plan_id,
+                    "window_id": run_id,
+                    "split_into_months": True,
+                    "split_child_count": count,
+                }
+            )
+            local.save_manifest(manifest)
             results.append(
                 {
                     "window_id": run_id,
@@ -245,6 +254,8 @@ def run_plan(
             ):
                 break
             break
+    if plan["plan_type"] in ("backfill", "reconcile"):
+        state.reconcile_committed_windows(plan_id)
     final_windows = state.plan_windows(plan_id)
     pending = sum(row["extraction_status"] not in ("committed", "split") for row in final_windows)
     unreconciled = (
@@ -328,7 +339,12 @@ def rebuild_state(
             manifest.get("kind") == "offline_import"
             and manifest.get("run_id") in (include_run_ids or set())
         )
-        if manifest.get("source") == "ll2" and manifest.get("complete") is True and accepted_kind:
+        if (
+            manifest.get("source") == "ll2"
+            and manifest.get("complete") is True
+            and not manifest.get("split_into_months")
+            and accepted_kind
+        ):
             manifests.append(manifest)
     manifests.sort(key=lambda item: (item.get("created_at_utc", ""), item["run_id"]))
     refresh_context = [
