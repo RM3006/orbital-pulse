@@ -41,7 +41,7 @@ Worker state, heartbeat, batch results, audit output and snapshot handoff remain
 
 ## Step 3 warehouse workflow
 
-The optional `warehouse` group supplies BigQuery, dbt and Dagster. Raw JSON stays local; cloud loads send prepared Parquet directly to BigQuery. The latest source snapshot is SQLite revision 42. The production candidate remains ineligible while its historical plan is incomplete; scratch verification uses a separate, complete bounded fixture scope and never overrides production eligibility.
+The optional `warehouse` group supplies BigQuery, dbt and Dagster. Cloud loads send prepared Parquet directly from local disk and keep the raw JSON locally. The latest production run loaded the complete revision-214 input snapshot; release `sla-release-v1-33fed44c32ba614321e95150` returned `published` on 2026-11-09. Revision 95 remains a separate internal preview in scratch and expires on 2026-11-16. The private Data Studio report was last verified against six preview views; production source migration is still required.
 
 The integrated command runs the same dependency chain locally and in tests:
 
@@ -52,15 +52,17 @@ uv run --locked --group warehouse --env-file .env.local python -m launch_atlas w
 
 This is an explicit cloud-write command: validated export → immutable snapshot → checksummed local-file loads → isolated dbt build/tests → reporting content validation. It creates invocation-specific model aliases in the seven-day scratch dataset and saves profiles, dbt logs/artifacts, candidate evidence and result/failure summaries under `data/warehouse/runs/<run-id>/`. Profiles contain environment expressions, not credential JSON. The new runner caps BigQuery/Python/dbt queries at 100,000,000 bytes each and runs dbt with one thread. Its cap is per job, not a project/monthly spending guarantee. Measure free-tier headroom before bounded cloud verification; never use trial credit beyond the authorized free limits.
 
+The candidate gate compares each of the 15 reporting relation row counts to the active retained release. A difference over 10% of the previous count or five rows, whichever is larger, is written to `candidate-evidence.json` and blocks publication. The first release has no active baseline, so it relies on the nonempty, schema, source-scope and dbt checks. A candidate-only run reports drift for review. A publishing run fails before retention or pointer activation when drift exceeds the tolerance.
+
 Without `--publish`, no production reporting rows or pointer are created. The result reports `candidate_built`, row counts and actual release eligibility. To include live acquisition, explicitly supply `--refresh-plan-id <saved-refresh-plan>` and `--max-requests <1-8>`; an incomplete refresh stops the downstream chain. The shared LL2 ledger and raw/checkpoint rules still apply. No ingestion is performed when the flag is omitted.
 
-After required history is complete and a candidate passes every check, first internal activation is:
+For a new production namespace, after required history is complete and a candidate passes every check, first activation uses:
 
 ```powershell
 uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-run --data-dir data --publish --expected-active none
 ```
 
-For later activation, pass the actual previous release ID instead of `none`. The gate runs before retention. Each release retains nine marts and six dimension/bridge relations with `release_id`; stable views use one active pointer. Schema, row counts, snapshot scope, SHA-256 row-multiset digests and manifest identities are checked before activation. Candidate builds cannot overwrite retained rows. A stale writer or failed candidate preserves the current pointer. This is internal warehouse activation; Data Studio/site publication remains separate.
+This first full-history production activation has already run. The current release is `sla-release-v1-33fed44c32ba614321e95150`; do not repeat the `none` command against the existing namespace. For later activation, pass the actual previous release ID as `--expected-active`. The gate runs before retention. Each release retains nine marts and six dimension/bridge relations with `release_id`; stable views use one active pointer. Schema, row counts, snapshot scope, SHA-256 row-multiset digests and manifest identities are checked before activation. Candidate builds cannot overwrite retained rows. A stale writer or failed candidate preserves the current pointer. This is internal warehouse activation; Data Studio/site publication remains separate.
 
 Rollback verifies the previously retained rows without rebuilding them:
 
@@ -69,6 +71,46 @@ uv run --locked --group warehouse --env-file .env.local python -m launch_atlas w
 ```
 
 For recovery, inspect the run's `failure.json` and dbt logs, then fix the cause and run a new candidate. Deterministic source load jobs can be reused; new candidate aliases prevent concurrent model collisions. Do not manually move the active pointer or overwrite retained rows. Incompatible reporting schema changes require a reviewed storage/view migration; the current implementation fails closed rather than silently altering old releases.
+
+### Internal preview procedure (historical)
+
+This procedure created the separate revision-95 preview while history was incomplete. Its scratch tables expire on 2026-11-16. For a future bounded preview, first check project query and storage headroom and confirm the scratch dataset has its seven-day table expiry. Run:
+
+```powershell
+uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-run --data-dir data --publish --preview --expected-active none
+```
+
+This command holds the worker lock while it verifies and pins accepted local inputs. If the lock is busy, wait for the bounded worker tick to finish. The source loads, dbt models, retained tables, views and active pointer all live in scratch. The 15 `preview_` reporting views expose `reporting_preview=true` and the coverage mart shows incomplete history. Review the pinned snapshot, load receipt, test results and release manifest in the run artifacts. The production activation command still requires a complete history snapshot.
+
+## Step 4 weekly warehouse operation
+
+The local worker owns LL2 acquisition and writes its accepted state, raw evidence, quota ledger and Parquet exports under `data/`. It completed the history plan, catch-up and raw replay audit; the production run used the resulting revision-214 input snapshot. The user has since requested the worker stop. Its local state records `stop_requested=true`; no worker process was observed in the latest check. The Task Scheduler entry could not be read from the current shell, so verify task state before making claims about its enablement. Do not resume it unless weekly local acquisition is wanted. The warehouse command uses the same local state and creates a fresh immutable input snapshot before loading BigQuery.
+
+The full-history production run is complete; its recorded 77 query jobs billed 629,145,600 bytes in aggregate. This excludes report traffic and does not establish a monthly total. Warehouse refresh remains operator-triggered on this PC using the existing Google Cloud CLI ADC. The private report uses the personal owner account's existing GCP permissions under the user's scoped exception; no read-only IAM change was made. No unattended cloud identity or recurring BigQuery scheduler is configured. A local Windows weekly task remains a possible automation choice after report source migration and freshness/query checks; it requires the PC awake and the user signed in. A hosted runner needs durable raw/checkpoint/quota state and a keyless workload identity before it can own this workflow.
+
+For each manual run, pause local acquisition for the duration of the warehouse snapshot/build so SQLite and Parquet cannot change during pinning:
+
+```powershell
+.\scripts\worker.ps1 -Action Stop
+.\scripts\worker.ps1 -Action Status
+uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-run --data-dir data
+```
+
+Confirm the worker status is stopped before starting the warehouse command. In the resulting `data/warehouse/runs/<run-id>/`, inspect `result.json`, `candidate-evidence.json` and the recorded query job bytes. Confirm the pinned snapshot is complete, dbt tests passed, all 15 relation counts are present and candidate validation passed. If any check fails, inspect `failure.json` and `logs/dbt.log`; the current active release remains selected.
+
+Candidate-only preview and later activation are two separate warehouse runs, so include both in the monthly query budget. The first full-history production release has already been activated. For a later release, first confirm free-tier headroom and use the previous active release ID:
+
+```powershell
+uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-run --data-dir data --publish --expected-active sla-release-v1-33fed44c32ba614321e95150
+```
+
+For a later weekly release, use the active release ID from the latest successful result as `--expected-active <release-id>`. A routine production refresh can use one publishing invocation after the monthly-headroom check because the command itself runs candidate validation before activation. Record its run directory and billed bytes. Resume acquisition after the warehouse run only when weekly local source updates should restart:
+
+```powershell
+.\scripts\worker.ps1 -Action Resume -Reason "Warehouse run finished; local state is ready to continue"
+```
+
+The worker's seven-day local refresh interval and the weekly BigQuery build are separate schedules. The warehouse command does not trigger the worker's next update, and the local worker does not invoke BigQuery.
 
 The granular offline `state-export`, `input-snapshot` and `warehouse-prepare` commands and explicit `warehouse-load` remain available. Load-plan contract v3 records an optional source-dataset override for expiring scratch tests; normal loads still target `space_launch_atlas_source`. Prepared files use a short hash prefix plus a full-identity collision check to stay within Windows path limits. Raw manifests and bodies are verified locally, not uploaded.
 
@@ -184,8 +226,8 @@ Retention stays manual: retain raw evidence, source request provenance, current 
 
 ## Checks and future stages
 
-Terraform installation, resource declarations, live deployment and offline mock checks are documented in [infra/README.md](../infra/README.md). Terraform was applied to the authorized project; its no-op refresh plan is clean. Two opt-in BigQuery integration tests verified release metadata and the actual load/dbt/retention/activation chain in expiring scratch, including stale/failed candidates, reader consistency, rollback and corruption rejection. The six-op Dagster job executes locally. The earlier Windows stall was caused by sandbox-blocked asyncio loopback; current execution evidence is in ROADMAP.md. No production reporting release is active.
+Terraform installation, resource declarations, live deployment and offline mock checks are documented in [infra/README.md](../infra/README.md). Terraform was applied to the authorized project; its last recorded refresh plan was clean. Two opt-in BigQuery integration tests verified release metadata and the actual load/dbt/retention/activation chain in expiring scratch, including stale/failed candidates, reader consistency, rollback and corruption rejection. The six-op Dagster job executes locally. The first full-history production release was published; its run evidence is summarized in ROADMAP.md. The earlier Windows stall was caused by sandbox-blocked asyncio loopback; see ROADMAP.md for current execution evidence.
 
 Default tests are offline. Install `uv sync --locked --group warehouse` for all-code checks, then run Ruff lint/format, Pyright and `pytest --basetemp .pytest-tmp`. Linux and Windows CI have both passed these checks without cloud credentials. The base CLI runtime remains usable without the warehouse group.
 
-Local LL2 acquisition scheduling is implemented; automatic warehouse execution remains pending. The same local Dagster dependency chain already executes acquisition, snapshot, load, dbt/checks, retention and activation. Actual production activation remains gated by incomplete Step 2 history. Data Studio's no-cost edition requires a Google account and hosted report/data-source creation, not a server instance. The user selected their personal Google account as report owner and a weekly initial BigQuery warehouse refresh. The query credential must have only the required read access to the reporting dataset plus BigQuery Job User in the query project; verify the account's effective and inherited roles before using it for queries. A distinct Google identity is needed only if the personal account cannot meet that rule. Managed Workspace/Cloud Identity is required only for Data Studio's optional service-account mode. The inspected Data Studio home still requests API authorization; no report is connected. The console confirms an active trial; private expiry/cost observations remain in ignored evidence. No account upgrade, paid usage or GCS is authorized; continuing within free usage after the trial requires active billing or a compatible alternative. Research, measured build bytes and the weekly cadence estimate are recorded in ROADMAP.md.
+Local LL2 acquisition scheduling is implemented, but the worker is stopped at the user's request. The same local Dagster dependency chain has executed acquisition, snapshot, load, dbt/checks, retention and production activation. Data Studio's no-cost edition requires a Google account and hosted report/data-source creation, not a server instance. The user's personal Google account owns the private report and queries BigQuery under the previously documented scoped IAM exception. The report still needs source migration from scratch and production release/freshness validation. Managed Workspace/Cloud Identity is required only for Data Studio's optional service-account mode. No recurring warehouse or report refresh is configured. The console last showed an active trial; private expiry/cost observations remain in ignored evidence. No account upgrade, paid usage or GCS is authorized; continuing within free usage after the trial requires active billing or a compatible alternative. The full-history run usage and weekly cadence choice are summarized in ROADMAP.md.
