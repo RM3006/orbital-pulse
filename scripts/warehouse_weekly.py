@@ -7,6 +7,7 @@ worker is stopped/incomplete or the accepted input snapshot matches production.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -86,6 +87,55 @@ def free_tier_scope_confirmed(environment: dict[str, str]) -> bool:
     return environment.get("BIGQUERY_FREE_TIER_SCOPE") == "single-project-confirmed"
 
 
+def warehouse_input_fingerprint(snapshot: dict[str, Any]) -> str:
+    """Hash warehouse-relevant content, excluding generated IDs and repo commit."""
+    export = snapshot.get("export")
+    transformations = snapshot.get("transformations")
+    if not isinstance(export, dict) or not isinstance(transformations, dict):
+        raise ValueError("Input snapshot is missing export or transformation provenance")
+    code_revision = transformations.get("code_revision")
+    if not isinstance(code_revision, dict):
+        raise ValueError("Input snapshot is missing code revision provenance")
+    stable_transformations = {
+        key: value for key, value in transformations.items() if key != "repository_commit"
+    }
+    stable_transformations["code_revision"] = {
+        key: value for key, value in code_revision.items() if key != "repository_commit"
+    }
+    identity = {
+        "contract_version": snapshot.get("contract_version"),
+        "source": snapshot.get("source"),
+        "state": snapshot.get("state"),
+        "export": {
+            key: export.get(key)
+            for key in (
+                "state_revision",
+                "files",
+                "rows",
+                "coverage",
+                "table_contracts",
+                "quality_passed",
+            )
+        },
+        "transformations": stable_transformations,
+        "source_inputs": snapshot.get("source_inputs"),
+    }
+    encoded = json.dumps(identity, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def read_snapshot(snapshot_id: str) -> dict[str, Any]:
+    path = DATA_DIR / "snapshots" / f"{snapshot_id}.json"
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        message = f"Pinned input snapshot is missing or unreadable: {snapshot_id}"
+        raise RuntimeError(message) from exc
+    if document.get("input_snapshot_id") != snapshot_id:
+        raise RuntimeError(f"Pinned snapshot filename and ID disagree: {snapshot_id}")
+    return document
+
+
 def run_cli(arguments: list[str], environment: dict[str, str]) -> subprocess.CompletedProcess[str]:
     cli_environment = environment.copy()
     venv_scripts = str(ROOT / ".venv" / "Scripts")
@@ -126,9 +176,29 @@ def accepted_snapshot(environment: dict[str, str]) -> dict[str, Any]:
     if result.returncode != 0:
         raise RuntimeError("Offline input-snapshot validation failed")
     try:
-        return json.loads(result.stdout)
+        summary = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
         raise RuntimeError("input-snapshot did not return valid JSON") from exc
+    relative_path = Path(summary.get("snapshot_path", ""))
+    if relative_path.is_absolute() or ".." in relative_path.parts:
+        raise RuntimeError("input-snapshot returned an unsafe snapshot path")
+    snapshot_path = (DATA_DIR / relative_path).resolve()
+    if not snapshot_path.is_relative_to(DATA_DIR.resolve()):
+        raise RuntimeError("input-snapshot path escapes the local data directory")
+    try:
+        document = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("input-snapshot file is missing or unreadable") from exc
+    state = document.get("state")
+    if (
+        document.get("input_snapshot_id") != summary.get("input_snapshot_id")
+        or not isinstance(state, dict)
+        or state.get("revision") != summary.get("state_revision")
+    ):
+        raise RuntimeError("input-snapshot summary disagrees with its pinned document")
+    document["state_revision"] = summary.get("state_revision")
+    document["quality_passed"] = summary.get("quality_passed")
+    return document
 
 
 def monthly_query_usage(client: bigquery.Client, project_id: str) -> tuple[int, int]:
@@ -229,12 +299,41 @@ def run(dry_run: bool) -> int:
             snapshot_id = snapshot.get("input_snapshot_id")
             if snapshot.get("quality_passed") is not True:
                 raise RuntimeError("Current input snapshot did not pass quality validation")
-            if snapshot_id != state.get("input_snapshot_id"):
-                raise RuntimeError("Worker and verified input-snapshot IDs do not match")
+            snapshot_revision = snapshot.get("state_revision")
+            worker_revision = (state.get("state_counts") or {}).get("acquisition")
+            if snapshot_revision != worker_revision:
+                raise RuntimeError(
+                    "Worker and verified input-snapshot revisions do not match "
+                    f"(worker={worker_revision}, snapshot={snapshot_revision})"
+                )
+            worker_snapshot_id = state.get("input_snapshot_id")
+            if snapshot_id != worker_snapshot_id:
+                worker_snapshot = read_snapshot(str(worker_snapshot_id))
+                if warehouse_input_fingerprint(snapshot) != warehouse_input_fingerprint(
+                    worker_snapshot
+                ):
+                    raise RuntimeError(
+                        "Current validated input differs from the worker's pinned snapshot"
+                    )
+                logging.info(
+                    "worker snapshot ID changed only in generated export/repository metadata; "
+                    "validated data, source inputs and transformation files match"
+                )
             local_manifest, local_result = latest_production_release()
             if snapshot_id == local_manifest.get("input_snapshot_id"):
                 logging.info(
                     "skip: accepted snapshot already matches production release %s",
+                    local_result.get("release_id"),
+                )
+                return 0
+            production_snapshot_id = local_manifest.get("input_snapshot_id")
+            production_snapshot = read_snapshot(str(production_snapshot_id))
+            if warehouse_input_fingerprint(snapshot) == warehouse_input_fingerprint(
+                production_snapshot
+            ):
+                logging.info(
+                    "skip: validated data and transformation inputs match production release %s; "
+                    "only generated export/repository metadata differs",
                     local_result.get("release_id"),
                 )
                 return 0
