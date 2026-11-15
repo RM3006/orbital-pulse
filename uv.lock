@@ -1826,6 +1826,9 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+cloud-worker = [
+    { name = "google-cloud-bigquery" },
+]
 dev = [
     { name = "pyright" },
     { name = "pytest" },
@@ -1849,6 +1852,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+cloud-worker = [{ name = "google-cloud-bigquery", specifier = ">=3,<4" }]
 dev = [
     { name = "pyright", specifier = ">=1.1.407,<2" },
     { name = "pytest", specifier = ">=8.4,<10" },

@@ -15,6 +15,7 @@ locals {
     ingest    = "Loads accepted local Parquet inputs into source tables."
     transform = "Runs dbt transformations and publishes reporting tables."
     reporting = "Read-only Data Studio query identity."
+    worker    = "Runs the bounded LL2 worker in Cloud Run and writes response evidence."
   }
   service_accounts = {
     for name, description in local.service_account_catalog : name => description
@@ -22,6 +23,8 @@ locals {
   }
   dataset_roles = {
     source_ingest       = { dataset = "source", account = "ingest", role = "roles/bigquery.dataEditor" }
+    source_worker       = { dataset = "source", account = "worker", role = "roles/bigquery.dataEditor" }
+    scratch_worker      = { dataset = "scratch", account = "worker", role = "roles/bigquery.dataEditor" }
     source_transform    = { dataset = "source", account = "transform", role = "roles/bigquery.dataViewer" }
     staging_transform   = { dataset = "staging", account = "transform", role = "roles/bigquery.dataEditor" }
     core_transform      = { dataset = "core", account = "transform", role = "roles/bigquery.dataEditor" }
@@ -46,6 +49,9 @@ resource "google_project_service" "required" {
     "iam.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "serviceusage.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "run.googleapis.com",
   ])
 
   project            = var.project_id
@@ -70,6 +76,25 @@ resource "google_bigquery_dataset" "layer" {
   }
 
   depends_on = [google_project_service.required]
+}
+
+resource "google_bigquery_table" "ll2_raw_response_pages" {
+  project             = var.project_id
+  dataset_id          = google_bigquery_dataset.layer["source"].dataset_id
+  table_id            = "ll2_raw_response_pages"
+  schema              = file("${path.module}/schemas/ll2_raw_response_pages.json")
+  description         = "Immutable LL2 HTTP response bodies and request provenance; one row per response attempt."
+  deletion_protection = true
+  time_partitioning {
+    type  = "DAY"
+    field = "request_started_at_utc"
+  }
+  clustering = ["run_id", "source"]
+  labels     = merge(local.labels, { layer = "source", content = "raw" })
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "google_service_account" "workload" {

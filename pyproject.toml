@@ -29,6 +29,7 @@ warehouse = [
     "google-cloud-bigquery>=3,<4",
     "google-auth-oauthlib>=1.2,<2",
 ]
+cloud-worker = ["google-cloud-bigquery>=3,<4"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["pipelines/launch_atlas"]

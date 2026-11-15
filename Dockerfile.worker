@@ -1,0 +1,14 @@
+FROM ghcr.io/astral-sh/uv:python3.12-trixie-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app/pipelines \
+    LOCAL_DATA_DIR=/tmp/data \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --group cloud-worker --no-install-project
+COPY pipelines/launch_atlas ./pipelines/launch_atlas
+
+CMD ["uv", "run", "--no-sync", "python", "-m", "launch_atlas.cloud_worker"]

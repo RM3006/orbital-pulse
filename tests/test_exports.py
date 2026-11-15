@@ -171,6 +171,29 @@ def test_offline_rebuild_copies_raw_and_recreates_state_without_quota(
     assert (source / "quota.json").exists() is original_quota
 
 
+def test_offline_rebuild_skips_superseded_split_parent_runs(tmp_path: Path) -> None:
+    source = tmp_path / "source-with-split-parent"
+    output = tmp_path / "rebuilt-with-split-parent"
+    fixture = Path(__file__).parent / "fixtures" / "ll2_public_sample.json"
+    settings = Settings(data_dir=source)
+    import_raw(settings, fixture, "accepted-child", "2026-11-01T16:52:44Z")
+    import_raw(settings, fixture, "split-parent", "2026-11-01T16:52:45Z")
+    manifest_path = source / "raw" / "ll2" / "split-parent" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["split_into_months"] = True
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = rebuild_state(
+        settings,
+        output,
+        include_run_ids={"accepted-child", "split-parent"},
+    )
+
+    assert result["runs_applied"] == 1
+    assert result["state"]["acquisition"] == 1
+    assert result["state"]["launch_current"] == 6
+
+
 def test_rebuild_preserves_completed_refresh_horizon(tmp_path: Path) -> None:
     source = tmp_path / "source-with-refresh"
     output = tmp_path / "rebuilt-with-refresh"

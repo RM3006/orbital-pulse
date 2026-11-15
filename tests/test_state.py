@@ -183,6 +183,59 @@ def test_frozen_window_only_advances_cursor_in_state_commit(
     assert store.coverage_cursors()["history"] == "2027-01-01T00:00:00+00:00"
 
 
+def test_split_child_passes_reconcile_against_matching_child(tmp_path: Path) -> None:
+    store = StateStore(tmp_path)
+    start, end = "2024-01-01T00:00:00+00:00", "2025-01-01T00:00:00+00:00"
+    windows = [
+        {
+            "window_id": f"history-2024-pass-{pass_number}",
+            "stream_id": "history",
+            "start_utc": start,
+            "end_utc": end,
+            "pass_number": pass_number,
+            "query": {"start": start, "end": end},
+            "initial_url": "https://ll.thespacedevs.com/2.3.0/launches/previous/",
+        }
+        for pass_number in (1, 2)
+    ]
+    store.create_plan("history", "backfill", "2026-11-07T00:00:00Z", {}, windows)
+    children = []
+    for month in (1, 2):
+        child_start = f"2024-{month:02d}-01T00:00:00+00:00"
+        child_end = f"2024-{month + 1:02d}-01T00:00:00+00:00"
+        for pass_number in (1, 2):
+            children.append(
+                {
+                    "window_id": f"history-2024-{month:02d}-pass-{pass_number}",
+                    "stream_id": "history",
+                    "start_utc": child_start,
+                    "end_utc": child_end,
+                    "pass_number": pass_number,
+                    "query": {"start": child_start, "end": child_end},
+                    "initial_url": "https://ll.thespacedevs.com/2.3.0/launches/previous/",
+                }
+            )
+    store.split_window("history-2024-pass-1", children)
+    with store.session() as connection:
+        connection.executemany(
+            """UPDATE extraction_window SET extraction_status='committed', content_digest=?
+               WHERE window_id=?""",
+            [
+                ("jan", "history-2024-01-pass-1"),
+                ("jan", "history-2024-01-pass-2"),
+                ("feb-first", "history-2024-02-pass-1"),
+                ("feb-second", "history-2024-02-pass-2"),
+            ],
+        )
+
+    result = store.reconcile_committed_windows("history")
+
+    assert result == {"checked": 2, "matched": 1, "mismatched": 1, "missing_prior": 0}
+    assert [row["window_id"] for row in store.unreconciled_windows("history")] == [
+        "history-2024-02-pass-2"
+    ]
+
+
 def test_valid_empty_window_advances_cursor_but_incomplete_window_does_not(tmp_path: Path) -> None:
     store = StateStore(tmp_path)
     windows = [

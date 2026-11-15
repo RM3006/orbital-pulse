@@ -110,6 +110,11 @@ def parser() -> argparse.ArgumentParser:
     warehouse_run.add_argument("--reporting-prefix", default="")
     warehouse_run.add_argument("--publish", action="store_true")
     warehouse_run.add_argument(
+        "--preview",
+        action="store_true",
+        help="With --publish: activate partial history in the expiring scratch preview namespace",
+    )
+    warehouse_run.add_argument(
         "--expected-active", help="Expected release ID, or 'none' for first activation"
     )
     warehouse_run.add_argument("--refresh-plan-id")
@@ -139,11 +144,40 @@ def parser() -> argparse.ArgumentParser:
     )
     plan_reconcile.add_argument("--parent-plan-id", required=True)
     plan_reconcile.add_argument("--plan-id", required=True)
+    worker_tick = commands.add_parser(
+        "worker-tick", help="Network: one due worker batch, at most eight requests"
+    )
     plan_runner = commands.add_parser(
         "run-plan", help="Network: resume frozen windows under one invocation request budget"
     )
     plan_runner.add_argument("--plan-id", required=True)
     plan_runner.add_argument("--max-requests", type=int, default=8)
+    plan_runner.add_argument(
+        "--archive-raw-to-bigquery",
+        action="store_true",
+        help="Durably archive each HTTP response to the source dataset before parsing it",
+    )
+    worker_tick.add_argument(
+        "--archive-raw-to-bigquery",
+        action="store_true",
+        help="Durably archive each HTTP response to the source dataset before parsing it",
+    )
+    for command in (plan_runner, worker_tick):
+        command.add_argument("--project-id", default=os.getenv("GCP_PROJECT_ID"))
+        command.add_argument("--location", default=os.getenv("GCP_LOCATION"))
+        command.add_argument("--dataset-prefix", default="space_launch_atlas")
+    raw_archive = commands.add_parser(
+        "warehouse-raw-archive",
+        help="Cloud write: replay local LL2 raw responses into the BigQuery raw archive",
+    )
+    raw_runs = raw_archive.add_mutually_exclusive_group(required=True)
+    raw_runs.add_argument("--run-id", action="append", help="Local run ID; repeat as needed")
+    raw_runs.add_argument(
+        "--all-runs", action="store_true", help="Archive all live LL2 acquisition runs"
+    )
+    raw_archive.add_argument("--project-id", default=os.getenv("GCP_PROJECT_ID"))
+    raw_archive.add_argument("--location", default=os.getenv("GCP_LOCATION"))
+    raw_archive.add_argument("--dataset-prefix", default="space_launch_atlas")
     rebuild = commands.add_parser(
         "rebuild-state", help="Offline: rebuild SQLite and exports from retained complete raw runs"
     )
@@ -158,7 +192,6 @@ def parser() -> argparse.ArgumentParser:
         "worker-init", help="Offline: bind the local weekly worker to a saved history plan"
     )
     worker_init.add_argument("--history-plan-id", required=True)
-    commands.add_parser("worker-tick", help="Network: one due worker batch, at most eight requests")
     commands.add_parser("worker-status", help="Offline: worker, quota and freshness status")
     commands.add_parser(
         "worker-stop", help="Request a durable stop after the current bounded batch"
@@ -194,6 +227,7 @@ def parser() -> argparse.ArgumentParser:
                 "plan-refresh",
                 "plan-reconcile",
                 "run-plan",
+                "warehouse-raw-archive",
                 "rebuild-state",
                 "worker-init",
                 "worker-tick",
@@ -233,6 +267,27 @@ def main(argv: list[str] | None = None) -> int:
             )
 
             try:
+                raw_archive_store = None
+                if arguments.command == "worker-tick" and arguments.archive_raw_to_bigquery:
+                    if not arguments.project_id or not arguments.location:
+                        raise ValueError(
+                            "Raw BigQuery archiving requires GCP_PROJECT_ID/GCP_LOCATION "
+                            "or explicit --project-id/--location"
+                        )
+                    from launch_atlas.warehouse.raw_json import (
+                        BigQueryRawResponseArchive,
+                        RawArchiveTarget,
+                    )
+
+                    raw_archive_store = (
+                        BigQueryRawResponseArchive.from_application_default_credentials(
+                            RawArchiveTarget(
+                                arguments.project_id,
+                                arguments.dataset_prefix,
+                                arguments.location,
+                            )
+                        )
+                    )
                 if arguments.command == "worker-init":
                     result = initialize_worker(settings, arguments.history_plan_id)
                 elif arguments.command == "worker-status":
@@ -242,7 +297,7 @@ def main(argv: list[str] | None = None) -> int:
                 elif arguments.command == "worker-resume":
                     result = resume_worker(settings, arguments.reason)
                 else:
-                    result = tick_worker(settings)
+                    result = tick_worker(settings, raw_archive=raw_archive_store)
             except WorkerBusy:
                 result = {"status": "already_running"}
             print(json.dumps(result, indent=2))
@@ -337,19 +392,38 @@ def main(argv: list[str] | None = None) -> int:
         if arguments.command in ("warehouse-run", "warehouse-rollback"):
             from google.cloud import bigquery
 
+            from launch_atlas.warehouse.releases import PREVIEW_TABLE_PREFIX
             from launch_atlas.warehouse.reporting import BigQueryReportingStore
 
             if not arguments.project_id or not arguments.location:
                 raise ValueError("Provide GCP_PROJECT_ID/GCP_LOCATION or explicit project/location")
-            target = CloudTarget(arguments.project_id, arguments.dataset_prefix, arguments.location)
+            preview = arguments.command == "warehouse-run" and arguments.preview
+            if preview and (
+                not arguments.publish
+                or arguments.refresh_plan_id
+                or arguments.reporting_dataset
+                or arguments.reporting_prefix
+            ):
+                raise ValueError(
+                    "--preview requires --publish, local accepted data and the scratch namespace"
+                )
+            scratch = arguments.dataset_prefix + "_scratch"
+            target = CloudTarget(
+                arguments.project_id,
+                arguments.dataset_prefix,
+                arguments.location,
+                source_dataset=scratch if preview else None,
+            )
             client = bigquery.Client(project=target.project_id)
             reporting = BigQueryReportingStore(
                 client,
                 target.project_id,
-                arguments.reporting_dataset or target.dataset_prefix + "_reporting",
+                scratch
+                if preview
+                else arguments.reporting_dataset or target.dataset_prefix + "_reporting",
                 target.location,
-                candidate_dataset=target.dataset_prefix + "_scratch",
-                table_prefix=arguments.reporting_prefix,
+                candidate_dataset=scratch,
+                table_prefix=PREVIEW_TABLE_PREFIX if preview else arguments.reporting_prefix,
                 maximum_bytes_billed=100_000_000,
             )
             if arguments.command == "warehouse-rollback":
@@ -377,6 +451,7 @@ def main(argv: list[str] | None = None) -> int:
                     if arguments.expected_active == "none"
                     else arguments.expected_active,
                     refresh_plan_id=arguments.refresh_plan_id,
+                    preview=preview,
                 )
                 execution = execute_warehouse_pipeline(pipeline)
                 if not execution.success:
@@ -421,10 +496,83 @@ def main(argv: list[str] | None = None) -> int:
         if arguments.command == "run-plan":
             from launch_atlas.worker import worker_lock
 
+            raw_archive_store = None
+            if arguments.archive_raw_to_bigquery:
+                if not arguments.project_id or not arguments.location:
+                    raise ValueError(
+                        "Raw BigQuery archiving requires GCP_PROJECT_ID/GCP_LOCATION "
+                        "or explicit --project-id/--location"
+                    )
+                from launch_atlas.warehouse.raw_json import (
+                    BigQueryRawResponseArchive,
+                    RawArchiveTarget,
+                )
+
+                raw_archive_store = BigQueryRawResponseArchive.from_application_default_credentials(
+                    RawArchiveTarget(
+                        arguments.project_id,
+                        arguments.dataset_prefix,
+                        arguments.location,
+                    )
+                )
             with worker_lock(settings.data_dir / "worker"):
-                result = run_plan(settings, arguments.plan_id)
+                result = run_plan(settings, arguments.plan_id, raw_archive=raw_archive_store)
             print(json.dumps(result, indent=2))
             return 0 if result["complete"] else 2
+        if arguments.command == "warehouse-raw-archive":
+            if not arguments.project_id or not arguments.location:
+                raise ValueError(
+                    "Raw BigQuery archiving requires GCP_PROJECT_ID/GCP_LOCATION "
+                    "or explicit --project-id/--location"
+                )
+            from launch_atlas.warehouse.raw_json import (
+                BigQueryRawResponseArchive,
+                RawArchiveTarget,
+                archive_local_run,
+                local_raw_run_ids,
+            )
+
+            archive = BigQueryRawResponseArchive.from_application_default_credentials(
+                RawArchiveTarget(
+                    arguments.project_id,
+                    arguments.dataset_prefix,
+                    arguments.location,
+                )
+            )
+            run_ids = arguments.run_id or local_raw_run_ids(settings.data_dir)
+            archived_responses = 0
+            for index, run_id in enumerate(run_ids, start=1):
+                result = archive_local_run(settings.data_dir, run_id, archive)
+                archived_responses += result["http_responses_archived"]
+                if index % 25 == 0 or index == len(run_ids):
+                    print(
+                        json.dumps(
+                            {
+                                "status": "archiving",
+                                "runs_completed": index,
+                                "runs_total": len(run_ids),
+                                "responses_archived": archived_responses,
+                            }
+                        ),
+                        file=sys.stderr,
+                        flush=True,
+                    )
+            print(
+                json.dumps(
+                    {
+                        "table": RawArchiveTarget(
+                            arguments.project_id,
+                            arguments.dataset_prefix,
+                            arguments.location,
+                        ).table_id,
+                        "runs_archived": len(run_ids),
+                        "http_responses_archived": archived_responses,
+                        "cloud_calls_made": True,
+                    },
+                    indent=2,
+                )
+            )
+            return 0
         if arguments.command == "import-raw":
             manifest = import_raw(
                 settings, arguments.input, arguments.run_id, arguments.observed_at

@@ -18,6 +18,18 @@ These contracts define the implemented release 1 SQL and its coverage limits. Cu
 
 Future comparative views: full available history from 1957, primary comparisons from 2000. Compare current year to the same elapsed previous-year period. Always display classified denominator/sample sizes and unresolved counts. Store additive numerators/denominators in marts; compute ratios from their sums under filters. Do not average percentages, use Top-N as a total, or sum counts across overlapping family memberships.
 
+## Release 1 Data Studio report design
+
+Use the retained reporting views for five pages. Default launch comparisons to 2000 onward, with a clear control for the full available history. Show the selected UTC date window and active release/freshness on every page. Use the same provider, vehicle configuration/family, site and outcome field names wherever those filters apply. Keep each chart at its source mart's grain, and verify that a page filter reaches every intended data source before publishing.
+
+1. **Launch overview:** headline orbital-attempt count, classified success share with its numerator/denominator, active providers and supported launches in the next 90 days. Add annual attempt volume and provider share trends. Show unresolved outcomes and unknown orbital/provider coverage alongside the headline metrics.
+2. **Providers and reliability:** provider attempt share and launch outcomes by provider, vehicle family and configuration. Display success, failure, partial failure and unresolved counts separately, with the classified denominator and sample size. Family counts overlap when a configuration belongs to multiple families, so do not total family rows.
+3. **Spaceports and cadence:** map `mart_site_cadence` using its latitude/longitude, with marker size for observed attempts and a linked site table. Add supported gaps between observed launches. Keep unknown-site attempts in the totals; a gap in incomplete history does not mean the site was inactive.
+4. **Booster reuse and landings:** show identifiable hardware flights and reuse numerator/denominator, then landing attempts and known landing outcomes as separate charts. Add turnaround only for supported consecutive source flight numbers. Keep source-detail and identifiable-hardware coverage visible because the LL2 hardware history is sparse.
+5. **Upcoming launches and coverage:** list the 90-day launch manifest with provider, vehicle, site, source status, original date precision and the supported earliest/latest interval. Show unsupported-precision candidates separately. Include independent coverage counts, history completeness, latest accepted observation and source-update freshness. Never render a coarse source date as an exact launch time.
+
+Use page-level date controls and common dimensions for comparisons. For current-year trends, compare the year-to-date interval with the same elapsed dates in prior years. Compute rate charts from summed numerators and denominators under filters. Keep launch outcomes, landing outcomes, schedule movement and coverage as separate measures. Release 2 satellite and spacecraft detail is excluded from this report.
+
 ## Authored mart grains
 
 - `mart_launch_attempt_daily`: one row per snapshot, UTC launch date, provider, configuration and site. `attempt_count` and outcome counts are additive across those dimensions; group by null provider/site/configuration rather than dropping unknowns.

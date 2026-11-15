@@ -11,7 +11,9 @@ import re
 from typing import Any
 
 from launch_atlas.warehouse.releases import (
+    PREVIEW_TABLE_PREFIX,
     RELEASE_ID_PATTERN,
+    CandidateRejected,
     ReleaseManifest,
     validate_release_manifest,
 )
@@ -156,6 +158,7 @@ class BigQueryReleaseBackend:
         if not manifest.validated or not RELEASE_ID_PATTERN.fullmatch(manifest.release_id):
             raise ValueError("Only a valid release manifest can be published")
         validate_release_manifest(manifest)
+        self._check_release_scope(manifest)
         parameters = [
             ("release_id", "STRING", manifest.release_id),
             ("manifest_sha256", "STRING", manifest.manifest_sha256),
@@ -215,7 +218,17 @@ SELECT committed AS committed;""",
             return None
         manifest = ReleaseManifest(**json.loads(rows[0].manifest_json))
         validate_release_manifest(manifest)
+        self._check_release_scope(manifest)
         return manifest
+
+    def _check_release_scope(self, manifest: ReleaseManifest) -> None:
+        preview_namespace = (
+            self.dataset_id.endswith("_scratch")
+            and self.pointer_table == PREVIEW_TABLE_PREFIX + "active_release"
+            and self.metadata_table == PREVIEW_TABLE_PREFIX + "release_manifest"
+        )
+        if manifest.preview != preview_namespace:
+            raise CandidateRejected("Preview releases require the reserved scratch namespace")
 
     def activate_retained(self, release_id: str, expected_current_release_id: str | None) -> bool:
         rows = self._query(

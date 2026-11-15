@@ -37,6 +37,8 @@ REQUIRED_REPORTING_TABLES = frozenset(
         "core_dim_pad",
     }
 )
+MINIMUM_ROW_COUNT_DRIFT = 5
+PREVIEW_TABLE_PREFIX = "preview_"
 
 
 class CandidateRejected(ValueError):
@@ -45,6 +47,35 @@ class CandidateRejected(ValueError):
 
 class StalePublisher(RuntimeError):
     """The active release changed after the caller selected its expected value."""
+
+
+def reporting_volume_drift_errors(
+    candidate_counts: dict[str, int], previous_counts: dict[str, int]
+) -> tuple[str, ...]:
+    """Flag reporting relations whose row counts changed by over 10% or five rows."""
+    if set(candidate_counts) != REQUIRED_REPORTING_TABLES:
+        raise CandidateRejected("Candidate volume check is missing reporting tables")
+    if set(previous_counts) != REQUIRED_REPORTING_TABLES:
+        raise CandidateRejected("Active release volume evidence is missing reporting tables")
+
+    errors = []
+    for name in sorted(REQUIRED_REPORTING_TABLES):
+        current = candidate_counts[name]
+        previous = previous_counts[name]
+        if any(
+            not isinstance(value, int) or isinstance(value, bool) or value < 0
+            for value in (current, previous)
+        ):
+            raise CandidateRejected("Reporting volume evidence must use nonnegative integers")
+        allowed_change = max(MINIMUM_ROW_COUNT_DRIFT, (previous + 9) // 10)
+        change = current - previous
+        if abs(change) > allowed_change:
+            errors.append(
+                f"{name} row count changed from {previous} to {current} "
+                f"({change:+d}), beyond the allowed {allowed_change}-row change "
+                "(10% of the previous release or a five-row minimum)"
+            )
+    return tuple(errors)
 
 
 @dataclass(frozen=True)
@@ -64,6 +95,7 @@ class CandidateEvidence:
     reporting_row_counts: dict[str, int]
     analysis_as_of_utc: str
     reporting_content_sha256: dict[str, str]
+    preview: bool = False
 
 
 @dataclass(frozen=True)
@@ -81,9 +113,13 @@ class ReleaseManifest:
     dbt_test_count: int
     validated: bool
     manifest_sha256: str
+    preview: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        result = asdict(self)
+        if not self.preview:
+            result.pop("preview")
+        return result
 
 
 class ReleaseBackend(Protocol):
@@ -110,7 +146,7 @@ def _canonical_hash(value: Any) -> str:
 
 
 def build_release_manifest(evidence: CandidateEvidence) -> ReleaseManifest:
-    """Fail closed unless a nonempty, complete load and dbt candidate passed checks."""
+    """Require verified load and dbt evidence, with explicit scope for partial history."""
     if not SNAPSHOT_ID_PATTERN.fullmatch(evidence.input_snapshot_id):
         raise CandidateRejected("Candidate input snapshot ID is invalid")
     receipt = evidence.load_receipt
@@ -118,7 +154,10 @@ def build_release_manifest(evidence: CandidateEvidence) -> ReleaseManifest:
         raise CandidateRejected("Candidate load receipt is not ready")
     if receipt.get("snapshot_id") != evidence.input_snapshot_id:
         raise CandidateRejected("Candidate load receipt references another input snapshot")
-    if receipt.get("release_eligible") is not True:
+    if evidence.preview is True:
+        if receipt.get("release_eligible") is not False:
+            raise CandidateRejected("Preview activation expects an incomplete history snapshot")
+    elif evidence.preview is not False or receipt.get("release_eligible") is not True:
         raise CandidateRejected("Input snapshot is not eligible for a complete reporting release")
     load_plan_id = receipt.get("plan_id")
     if not isinstance(load_plan_id, str) or not load_plan_id:
@@ -139,7 +178,9 @@ def build_release_manifest(evidence: CandidateEvidence) -> ReleaseManifest:
     if evidence.dbt_test_failures != 0:
         raise CandidateRejected("Candidate has failing dbt tests")
     if not evidence.candidate_validation_passed or evidence.candidate_validation_errors:
-        raise CandidateRejected("Candidate-level validation did not pass")
+        details = "; ".join(evidence.candidate_validation_errors)
+        message = "Candidate-level validation did not pass"
+        raise CandidateRejected(f"{message}: {details}" if details else message)
     try:
         as_of = datetime.fromisoformat(evidence.analysis_as_of_utc.replace("Z", "+00:00"))
     except ValueError as exc:
@@ -178,6 +219,8 @@ def build_release_manifest(evidence: CandidateEvidence) -> ReleaseManifest:
         "dbt_test_count": evidence.dbt_test_count,
         "validated": True,
     }
+    if evidence.preview:
+        identity["preview"] = True
     manifest_sha256 = _canonical_hash(identity)
     release_id = f"sla-release-v1-{manifest_sha256[:24]}"
     if not RELEASE_ID_PATTERN.fullmatch(release_id):
@@ -196,6 +239,7 @@ def build_release_manifest(evidence: CandidateEvidence) -> ReleaseManifest:
         dbt_test_count=evidence.dbt_test_count,
         validated=True,
         manifest_sha256=manifest_sha256,
+        preview=evidence.preview,
     )
 
 
@@ -230,7 +274,7 @@ def validate_release_manifest(manifest: ReleaseManifest) -> None:
                 "snapshot_id": manifest.input_snapshot_id,
                 "plan_id": manifest.load_plan_id,
                 "plan_sha256": manifest.load_plan_sha256,
-                "release_eligible": True,
+                "release_eligible": not manifest.preview,
             },
             dbt_invocation_id=manifest.dbt_invocation_id,
             dbt_manifest_sha256=manifest.dbt_manifest_sha256,
@@ -243,6 +287,7 @@ def validate_release_manifest(manifest: ReleaseManifest) -> None:
             reporting_row_counts=manifest.reporting_row_counts,
             analysis_as_of_utc=manifest.analysis_as_of_utc,
             reporting_content_sha256=manifest.reporting_content_sha256,
+            preview=manifest.preview,
         )
     )
     if expected != manifest:

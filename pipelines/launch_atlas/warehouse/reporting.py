@@ -135,9 +135,28 @@ class BigQueryReportingStore(BigQueryReleaseBackend):
             counts[name], signatures[name] = self._inspect(self._candidate(relation), snapshot_id)
         return counts, signatures
 
+    def active_release_manifest(self) -> ReleaseManifest | None:
+        """Read the active baseline without creating production reporting tables."""
+        from google.api_core.exceptions import NotFound
+
+        pointer_table = f"{self.project_id}.{self.dataset_id}.{self.pointer_table}"
+        try:
+            self._client.get_table(pointer_table)
+        except NotFound:
+            return None
+
+        release_id = self.active_release_id()
+        if release_id is None:
+            return None
+        manifest = self.retained_release(release_id)
+        if manifest is None:
+            raise CandidateRejected("Active release pointer has no validated retained manifest")
+        return manifest
+
     def retain_candidate(self, manifest: ReleaseManifest, relations: dict[str, str]) -> None:
         from google.cloud import bigquery
 
+        self._check_release_scope(manifest)
         counts, signatures = self.inspect_candidate(relations, manifest.input_snapshot_id)
         if (
             counts != manifest.reporting_row_counts
@@ -169,8 +188,10 @@ class BigQueryReportingStore(BigQueryReleaseBackend):
                 ],
             )
             view_id = f"{self.project_id}.{self.dataset_id}.{self.table_prefix}{name}"
+            preview_column = "TRUE AS reporting_preview, " if manifest.preview else ""
             view_sql = (
-                "SELECT retained_rows.*, manifest.created_at AS reporting_published_at_utc, "
+                f"SELECT retained_rows.*, {preview_column}"
+                "manifest.created_at AS reporting_published_at_utc, "
                 "active.updated_at AS reporting_activated_at_utc "
                 f"FROM `{retained}` AS retained_rows "
                 f"JOIN {self._pointer_ref} AS active "
@@ -188,6 +209,7 @@ class BigQueryReportingStore(BigQueryReleaseBackend):
 
     def verify_retained(self, manifest: ReleaseManifest) -> None:
         validate_release_manifest(manifest)
+        self._check_release_scope(manifest)
         if set(manifest.reporting_row_counts) != REQUIRED_REPORTING_TABLES:
             raise CandidateRejected("Retained manifest has incomplete reporting tables")
         for name in sorted(REQUIRED_REPORTING_TABLES):

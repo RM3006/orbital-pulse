@@ -386,12 +386,17 @@ class StateStore:
                 content_digest = hashlib.sha256(
                     json.dumps(identities, separators=(",", ":")).encode("utf-8")
                 ).hexdigest()
-                if window["parent_window_id"]:
-                    previous_pass = connection.execute(
-                        "SELECT content_digest FROM extraction_window "
-                        "WHERE window_id=? AND extraction_status='committed'",
+                parent = (
+                    connection.execute(
+                        "SELECT content_digest, extraction_status FROM extraction_window "
+                        "WHERE window_id=?",
                         (window["parent_window_id"],),
                     ).fetchone()
+                    if window["parent_window_id"]
+                    else None
+                )
+                if parent and parent["extraction_status"] == "committed":
+                    previous_pass = parent
                 else:
                     previous_pass = connection.execute(
                         """SELECT content_digest FROM extraction_window
@@ -560,19 +565,60 @@ class StateStore:
                      AND candidate.reconciled=0
                      AND EXISTS (
                        SELECT 1 FROM extraction_window AS prior
-                       WHERE ((candidate.parent_window_id IS NOT NULL
-                               AND prior.window_id=candidate.parent_window_id)
-                          OR (candidate.parent_window_id IS NULL
-                              AND prior.plan_id=candidate.plan_id
-                              AND prior.stream_id=candidate.stream_id
-                              AND prior.start_utc=candidate.start_utc
-                              AND prior.end_utc=candidate.end_utc
-                              AND prior.pass_number=candidate.pass_number-1))
-                         AND prior.extraction_status='committed')
+                       WHERE prior.extraction_status='committed'
+                         AND (prior.window_id=candidate.parent_window_id
+                           OR (prior.plan_id=candidate.plan_id
+                             AND prior.stream_id=candidate.stream_id
+                             AND prior.start_utc=candidate.start_utc
+                             AND prior.end_utc=candidate.end_utc
+                             AND prior.pass_number=candidate.pass_number-1)))
                    ORDER BY candidate.start_utc""",
                 (plan_id,),
             ).fetchall()
             return [dict(row) for row in rows]
+
+    def reconcile_committed_windows(self, plan_id: str) -> dict[str, int]:
+        """Recompute pass markers against the immediately preceding matching window."""
+        with self.session() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            candidates = connection.execute(
+                """SELECT candidate.window_id, candidate.content_digest,
+                          CASE WHEN parent.extraction_status='committed'
+                            THEN parent.content_digest ELSE prior.content_digest END
+                            AS prior_digest
+                   FROM extraction_window AS candidate
+                   LEFT JOIN extraction_window AS parent
+                     ON parent.window_id=candidate.parent_window_id
+                   LEFT JOIN extraction_window AS prior
+                     ON prior.plan_id=candidate.plan_id
+                    AND prior.stream_id=candidate.stream_id
+                    AND prior.start_utc=candidate.start_utc
+                    AND prior.end_utc=candidate.end_utc
+                    AND prior.pass_number=candidate.pass_number-1
+                    AND prior.extraction_status='committed'
+                   WHERE candidate.plan_id=? AND candidate.pass_number>1
+                     AND candidate.extraction_status='committed'""",
+                (plan_id,),
+            ).fetchall()
+            matched = 0
+            mismatched = 0
+            missing_prior = 0
+            for row in candidates:
+                prior_digest = row["prior_digest"]
+                reconciled = prior_digest is not None and prior_digest == row["content_digest"]
+                matched += int(reconciled)
+                mismatched += int(prior_digest is not None and not reconciled)
+                missing_prior += int(prior_digest is None)
+                connection.execute(
+                    "UPDATE extraction_window SET reconciled=? WHERE window_id=?",
+                    (int(reconciled), row["window_id"]),
+                )
+            return {
+                "checked": len(candidates),
+                "matched": matched,
+                "mismatched": mismatched,
+                "missing_prior": missing_prior,
+            }
 
     def plan(self, plan_id: str) -> dict[str, Any]:
         with self.session() as connection:
