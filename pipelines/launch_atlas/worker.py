@@ -22,6 +22,7 @@ from launch_atlas.storage.exports import export_current
 from launch_atlas.storage.local import LocalStore, atomic_json, read_json
 from launch_atlas.storage.snapshots import create_input_snapshot
 from launch_atlas.storage.state import StateStore
+from launch_atlas.warehouse.raw_json import RawResponseArchive
 from launch_atlas.windows import create_refresh_plan
 
 WEEK = timedelta(days=7)
@@ -222,10 +223,14 @@ def _audit_history(settings: Settings, worker: dict[str, Any]) -> None:
 def tick_worker(
     settings: Settings,
     *,
+    max_requests: int = 8,
     transport: httpx.BaseTransport | None = None,
     now: datetime | None = None,
+    raw_archive: RawResponseArchive | None = None,
 ) -> dict[str, Any]:
     """At most eight requests per tick; quota and circuit apply across every caller."""
+    if not 1 <= max_requests <= 8:
+        raise ValueError("A worker tick must be limited to 1-8 requests")
     now = (now or datetime.now(UTC)).astimezone(UTC)
     root = settings.data_dir / "worker"
     with worker_lock(root):
@@ -263,9 +268,10 @@ def tick_worker(
                 worker["active_plan_id"] = plan_id
             save("running")  # Persist the selected frozen plan before any network request.
             result = run_plan(
-                settings.model_copy(update={"max_requests": min(8, quota["available"])}),
+                settings.model_copy(update={"max_requests": min(max_requests, quota["available"])}),
                 worker["active_plan_id"],
                 transport=transport,
+                raw_archive=raw_archive,
             )
             batch_path = root / "batches" / (uuid4().hex + ".json")
             atomic_json(batch_path, result)

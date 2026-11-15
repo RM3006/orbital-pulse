@@ -7,3 +7,8 @@ output "workload_service_accounts" {
   description = "Non-secret workload identities. No keys are created or exported."
   value       = { for name, account in google_service_account.workload : name => account.email }
 }
+
+output "worker_image_repository" {
+  description = "Private Artifact Registry repository used for the Cloud Run worker image."
+  value       = google_artifact_registry_repository.worker.name
+}

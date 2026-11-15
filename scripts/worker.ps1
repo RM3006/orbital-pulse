@@ -23,6 +23,31 @@ if ($existingTask) {
         throw 'Existing task belongs to a different checkout; refusing to replace or control it.'
     }
 }
+$workerArguments = "-m launch_atlas worker-tick --data-dir `"$dataRoot`""
+$workerDescription = 'Resumable local LL2 refresh with durable local state; no dbt or warehouse publication.'
+if ($Action -eq 'Install') {
+    $projectEnvironment = @{}
+    $envPath = Join-Path $projectRoot '.env.local'
+    if (Test-Path -LiteralPath $envPath) {
+        foreach ($line in Get-Content -LiteralPath $envPath) {
+            if ($line -match '^\s*(GCP_PROJECT_ID|GCP_LOCATION)\s*=\s*(.*?)\s*$') {
+                $projectEnvironment[$Matches[1]] = $Matches[2].Trim().Trim('"').Trim("'")
+            }
+        }
+    }
+    $projectId = $projectEnvironment['GCP_PROJECT_ID']
+    $location = $projectEnvironment['GCP_LOCATION']
+    if ([bool]$projectId -ne [bool]$location) {
+        throw '.env.local must contain both GCP_PROJECT_ID and GCP_LOCATION to enable raw archiving.'
+    }
+    if ($projectId) {
+        if ($projectId -notmatch '^[A-Za-z0-9-]+$' -or $location -notmatch '^[a-z0-9-]+$') {
+            throw 'GCP project ID and location in .env.local must contain only letters, digits and hyphens.'
+        }
+        $workerArguments += " --archive-raw-to-bigquery --project-id `"$projectId`" --location `"$location`""
+        $workerDescription = 'Resumable local LL2 refresh; archives exact responses to BigQuery and retains local state; no dbt or warehouse publication.'
+    }
+}
 Push-Location -LiteralPath $projectRoot
 try {
     switch ($Action) {
@@ -31,7 +56,7 @@ try {
             if ($LASTEXITCODE -ne 0) { throw 'Worker initialization failed.' }
             $userName = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
             $taskAction = New-ScheduledTaskAction -Execute $pythonWindowless `
-                -Argument "-m launch_atlas worker-tick --data-dir `"$dataRoot`"" `
+                -Argument $workerArguments `
                 -WorkingDirectory $projectRoot
             $triggers = @(
                 (New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
@@ -43,8 +68,7 @@ try {
                 -ExecutionTimeLimit (New-TimeSpan -Hours 1)
             $principal = New-ScheduledTaskPrincipal -UserId $userName -LogonType Interactive -RunLevel Limited
             Register-ScheduledTask -TaskName $TaskName -Action $taskAction -Trigger $triggers `
-                -Settings $settings -Principal $principal -Description `
-                'Resumable LL2 history then weekly local deltas; shared quota and failure circuit; no cloud jobs.' `
+                -Settings $settings -Principal $principal -Description $workerDescription `
                 -Force | Out-Null
             Start-ScheduledTask -TaskName $TaskName
         }

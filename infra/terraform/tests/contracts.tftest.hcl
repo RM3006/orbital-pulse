@@ -37,12 +37,32 @@ run "warehouse_contract" {
       google_bigquery_dataset_iam_member.dataset_access["reporting_transform"].role == "roles/bigquery.dataEditor" &&
       google_bigquery_dataset_iam_member.dataset_access["reporting_transform"].dataset_id == output.dataset_ids.reporting &&
       google_bigquery_dataset_iam_member.dataset_access["source_ingest"].role == "roles/bigquery.dataEditor" &&
-      length(google_project_iam_member.job_user) == 2 &&
-      length(google_service_account.workload) == 2 &&
+      google_bigquery_dataset_iam_member.dataset_access["source_worker"].role == "roles/bigquery.dataEditor" &&
+      google_bigquery_dataset_iam_member.dataset_access["source_worker"].dataset_id == output.dataset_ids.source &&
+      google_bigquery_dataset_iam_member.dataset_access["scratch_worker"].role == "roles/bigquery.dataEditor" &&
+      google_bigquery_dataset_iam_member.dataset_access["scratch_worker"].dataset_id == output.dataset_ids.scratch &&
+      length(google_project_iam_member.job_user) == 3 &&
+      length(google_service_account.workload) == 3 &&
       !contains(keys(google_service_account.workload), "reporting") &&
       !contains(keys(google_bigquery_dataset_iam_member.dataset_access), "reporting_reader")
     )
     error_message = "Ingest, transform and reporting identities must have separate, scoped access."
+  }
+
+  assert {
+    condition = (
+      google_artifact_registry_repository_iam_member.worker_runtime_reader.role == "roles/artifactregistry.reader" &&
+      google_artifact_registry_repository_iam_member.worker_runtime_reader.repository == "space-launch-atlas" &&
+      google_bigquery_table.ll2_raw_response_pages.dataset_id == output.dataset_ids.source &&
+      google_bigquery_table.ll2_raw_response_pages.time_partitioning[0].field == "request_started_at_utc" &&
+      toset(google_bigquery_table.ll2_raw_response_pages.clustering) == toset(["run_id", "source"]) &&
+      google_bigquery_table.ll2_raw_response_pages.deletion_protection &&
+      one([
+        for field in jsondecode(google_bigquery_table.ll2_raw_response_pages.schema) :
+        field.mode if field.name == "request_started_at_utc"
+      ]) == "NULLABLE"
+    )
+    error_message = "The exact-response archive must be partitioned, clustered, and protected from deletion."
   }
 
   assert {
@@ -51,8 +71,11 @@ run "warehouse_contract" {
       "iam.googleapis.com",
       "cloudresourcemanager.googleapis.com",
       "serviceusage.googleapis.com",
+      "artifactregistry.googleapis.com",
+      "cloudbuild.googleapis.com",
+      "run.googleapis.com",
     ])
-    error_message = "Only BigQuery, IAM, Resource Manager and Service Usage APIs should be enabled."
+    error_message = "Only required BigQuery, IAM, Resource Manager, Service Usage, Cloud Build, Cloud Run and Artifact Registry APIs should be enabled."
   }
 }
 
@@ -68,7 +91,7 @@ run "enable_optional_data_studio_service_account" {
       google_bigquery_dataset_iam_member.dataset_access["reporting_reader"].role == "roles/bigquery.dataViewer" &&
       google_bigquery_dataset_iam_member.dataset_access["reporting_reader"].dataset_id == output.dataset_ids.reporting &&
       contains(keys(google_service_account.workload), "reporting") &&
-      length(google_project_iam_member.job_user) == 3
+      length(google_project_iam_member.job_user) == 4
     )
     error_message = "The optional Data Studio identity must only read reporting and create query jobs."
   }

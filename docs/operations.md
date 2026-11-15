@@ -1,6 +1,6 @@
 # Setup and operations
 
-The local LL2 worker and a guarded local BigQuery refresh check are active. The five-page Data Studio report remains private and has no scheduled refresh. Local commands operate on `LOCAL_DATA_DIR` (default `data`). Step 2 requires no cloud credentials. Live `run-plan` uses the same LL2 client, immutable raw response chain and quota ledger as earlier ingestion; planning, state inspection, export and rebuild are offline.
+The local LL2 worker and guarded local BigQuery refresh check are configured but currently disabled. The five-page Data Studio report remains private and has no scheduled refresh. Local commands operate on `LOCAL_DATA_DIR` (default `data`). Step 2 requires no cloud credentials. Live `run-plan` uses the same LL2 client, immutable raw response chain and quota ledger as earlier ingestion; planning, state inspection, export and rebuild are offline.
 
 ## Local setup and checks
 
@@ -11,7 +11,7 @@ uv sync --locked --group warehouse
 uv run ruff check .
 uv run ruff format --check .
 uv run pyright
-uv run pytest -m "not integration and not live" --basetemp .pytest-tmp
+uv run python -m pytest -m "not integration and not live" --basetemp .pytest-tmp
 uv run python -m launch_atlas doctor --offline
 uv run python -m launch_atlas --help
 uv build --wheel
@@ -21,7 +21,7 @@ These commands work in PowerShell and standard Linux shells. `.pytest-tmp` is re
 
 ## Automatic local LL2 acquisition
 
-Install or inspect the current-user Windows task from the checkout:
+Install or inspect the current-user Windows task from the checkout. When `.env.local` contains both `GCP_PROJECT_ID` and `GCP_LOCATION`, installation passes those non-secret identifiers and enables exact-response archival to the existing BigQuery table using the user's local ADC:
 
 ```powershell
 .\scripts\worker.ps1 -Action Install -HistoryPlanId p2-history-1957-2026
@@ -31,17 +31,28 @@ Install or inspect the current-user Windows task from the checkout:
 .\scripts\worker.ps1 -Action Uninstall
 ```
 
-The `OrbitalPulse-LL2` task launches the existing venv's `pythonw.exe` without a console window. It checks every five minutes and at user logon, but performs network work only when due. It uses an interactive, limited user token, stores no password and needs this PC awake with the user logged in. Missed work resumes after the next available trigger; it does not wake the computer. This is a local acquisition scheduler, not a GitHub-hosted or cloud scheduler.
+The `OrbitalPulse-LL2` task launches the existing venv’s `pythonw.exe` without a console window. When enabled, it checks every five minutes and at user logon, but performs network work only when due. It uses an interactive, limited user token, stores no password and needs this PC awake with the user logged in. Missed work resumes after the next available trigger; it does not wake the computer. This is a local acquisition scheduler, not a GitHub-hosted or cloud scheduler. Both local Task Scheduler registrations were disabled on 2026-11-14 at the user’s request; no local worker process was running after the manual test.
 
 Each tick runs at most eight requests through the existing `run_plan` dependency chain; the shared `data/quota.json` still limits all callers to 15 reservations per rolling hour, including retries. Quota and `Retry-After` waits survive restarts. Three consecutive transport/HTTP/page-envelope failures across invocations latch a persistent circuit; a valid page resets the streak. Schema failures, conflicts, differing historical passes and replay/checksum failures also block the worker for investigation. Inspect `data/worker/state.json`, its last batch and the referenced raw manifests before resuming. Resume records a reason and clears the failure circuit, preserving quota reservations and server waits. Stop is honored at the end of the current bounded invocation; uninstall removes only this checkout's task and preserves data.
 
-The worker resumes the bound frozen history plan, then immediately creates a catch-up refresh. It verifies a full raw rebuild against all 11 active Parquet file hashes/row counts and semantic state counts before switching to weekly operation. Empty source runs are verified by the input snapshot; rebuild does not count those as semantic acquisitions. Subsequent refreshes run seven days after the prior successful refresh tick, resuming the same frozen plan after interruption. Recent 30-day launches, the upcoming 90-day horizon and updates since the last accepted correction watermark (with 48-hour overlap) are merged and validated; they do not rescan every historical year. A verified input snapshot is saved for the existing warehouse chain. BigQuery execution and reporting activation are not enabled by this worker.
+The worker resumes the bound frozen history plan, then immediately creates a catch-up refresh. It verifies a full raw rebuild against all 11 active Parquet file hashes/row counts and semantic state counts before switching to weekly operation. Empty source runs are verified by the input snapshot; rebuild does not count those as semantic acquisitions. Subsequent refreshes run seven days after the prior successful refresh tick, resuming the same frozen plan after interruption. Recent 30-day launches, the upcoming 90-day horizon and updates since the last accepted correction watermark (with 48-hour overlap) are merged and validated; they do not rescan every historical year. A verified input snapshot is saved for the existing warehouse chain. With `--archive-raw-to-bigquery`, each HTTP response is archived before parsing; this only writes the separate raw-response table. The worker does not load normalized source tables, run dbt, query the warehouse or activate a reporting release.
 
 Worker state, heartbeat, batch results, audit output and snapshot handoff remain under ignored `data/worker/`. The independent kernel lock prevents overlapping scheduled ticks and manual `run-plan` CLI commands, and releases when a process dies. A leftover `.writer.lock` is recovered only if its PID is verifiably dead; a live or inaccessible PID is left alone. Pause the worker before manual state repairs. Direct CLI controls are `worker-init`, `worker-tick`, `worker-status`, `worker-stop` and `worker-resume`; status is offline. Deleting the worker state or using another data root is not a quota-reset mechanism.
 
+The raw archive is `space_launch_atlas_source.ll2_raw_response_pages`. The initial load contains 304 historical live response rows and was reconciled against local body checksums. Two Cloud Run tests added 11 rows; the 2026-11-14 local refresh added seven, bringing the table to 322. The seven new BYTES bodies were read back and matched local SHA-256. For a manual replay, use `uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-raw-archive --all-runs --data-dir data`. The write path requires the table to exist and uses deterministic BigQuery load-job IDs; repeated uploads are idempotent. Keep local raw files and SQLite state. The current BigQuery table does not yet provide a worker-state restore path.
+
+To repeat the hosted checkpoint proof, first confirm the BigQuery scratch region, free-tier scope and available usage headroom. The opt-in test uses recorded LL2 fixtures, capped DML, and two expiring scratch tables that it deletes on exit:
+
+```powershell
+$env:RUN_BIGQUERY_INTEGRATION = "1"
+uv run --locked --group warehouse --env-file .env.local python -m pytest -m integration -s tests/test_worker_checkpoint.py --basetemp data/pc
+```
+
+The test deliberately leaves a simulated interrupted claim locked until the scratch tables are deleted. A committed checkpoint can be resumed in a new directory; a missing commit must be investigated before a replacement may contact LL2. The installed worker still uses its local data directory.
+
 ## Step 3 warehouse workflow
 
-The optional `warehouse` group supplies BigQuery, dbt and Dagster. Cloud loads send prepared Parquet directly from local disk and keep the raw JSON locally. The current production run loaded the verified revision-217 input snapshot and published release `sla-release-v1-d4f4ae640e0934f11d7ad4c4` on 2026-11-11. Revision 95 remains a separate internal preview in scratch and expires on 2026-11-16; the private Data Studio report has been migrated to production relations and no longer uses that preview.
+The optional `warehouse` group supplies BigQuery, dbt and Dagster. Cloud loads send prepared Parquet directly from local disk for the 11 typed source relations; the separate raw JSON archive is already in BigQuery. Raw archival does not normalize records or replace the Parquet load. The current production release remains `sla-release-v1-d4f4ae640e0934f11d7ad4c4`, published on 2026-11-11. On 2026-11-14, candidate snapshot `sla-input-v1-4d3caff1394ef1846b482c769c4cd60ebc32bd6756a8281e22eb64980a6ebba4` built in scratch: 20 table models, 11 views, 108 dbt tests and 15 reporting-relation checks passed. The candidate was not published, so the private report still reads the active 2026-11-11 release. The old revision-95 scratch preview expires on 2026-11-16 and is not used by the report.
 
 The integrated command runs the same dependency chain locally and in tests:
 
@@ -54,7 +65,7 @@ This is an explicit cloud-write command: validated export → immutable snapshot
 
 ### Guarded local warehouse schedule
 
-`OrbitalPulse-Warehouse` runs as the current interactive Windows user at 15:00 local time each day. It is a readiness check rather than a daily rebuild: if the worker is stopped/incomplete, it exits without BigQuery calls. Before budget queries, it compares the accepted worker snapshot with the current export and active production snapshot. The fingerprint includes accepted state, Parquet checksums/row counts, raw source manifests and transformation-file hashes, while ignoring generated export IDs/timestamps and the repository commit ID. This prevents documentation or scheduler commits from forcing a redundant warehouse build; changes in accepted data or transformation files remain distinct. For a genuinely changed snapshot it requires `BIGQUERY_FREE_TIER_SCOPE=single-project-confirmed` in ignored `.env.local`; the user confirmed on 2026-11-11 that no other BigQuery project uses this billing account, and the setting now records that confirmation. The task lists completed query jobs in the configured project for the current month and reads project table sizes. It proceeds only when this project's observed query usage leaves a 20 GiB reserve and observed table storage leaves a 1 GiB reserve. Unknown/missing usage statistics, missing ADC or a failed quality gate stop the job safely. Explicit early errors that have no query execution statistics (`accessDenied`, `invalidQuery`, `bytesBilledLimitExceeded`) are treated as zero-scan jobs; other missing billed-byte values fail closed. The existing release pipeline then uses a compare-and-swap active-release check and validates before activation.
+`OrbitalPulse-Warehouse` was configured to run as the current interactive Windows user at 15:00 local time. Its readiness checks include worker status, accepted snapshot fingerprints, project query usage, storage and the free-tier scope setting. Both local Windows task registrations were disabled on 2026-11-14 at the user’s request, so the daily check is not currently scheduled.
 
 **Budget scope:** Google's 1 TiB query and 10 GiB storage free allowances are per billing account, while this guard reads jobs and current table sizes for the configured project only. The user confirmed no other project uses this billing account, so this project is the current usage scope. If that changes, do not rely on the project-only check; an account-wide usage source is needed before unattended publishing. The storage threshold is a current table-size snapshot, not an account-level monthly-average calculation.
 
@@ -77,7 +88,7 @@ For a new production namespace, after required history is complete and a candida
 uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-run --data-dir data --publish --expected-active none
 ```
 
-This first full-history production activation has already run. The current release is `sla-release-v1-33fed44c32ba614321e95150`; do not repeat the `none` command against the existing namespace. For later activation, pass the actual previous release ID as `--expected-active`. The gate runs before retention. Each release retains nine marts and six dimension/bridge relations with `release_id`; stable views use one active pointer. Schema, row counts, snapshot scope, SHA-256 row-multiset digests and manifest identities are checked before activation. Candidate builds cannot overwrite retained rows. A stale writer or failed candidate preserves the current pointer. This is internal warehouse activation; Data Studio/site publication remains separate.
+This first full-history production activation has already run. The current release is `sla-release-v1-d4f4ae640e0934f11d7ad4c4`; do not repeat the `none` command against the existing namespace. For later activation, pass the actual previous release ID as `--expected-active`. The gate runs before retention. Each release retains nine marts and six dimension/bridge relations with `release_id`; stable views use one active pointer. Schema, row counts, snapshot scope, SHA-256 row-multiset digests and manifest identities are checked before activation. Candidate builds cannot overwrite retained rows. A stale writer or failed candidate preserves the current pointer. This is internal warehouse activation; Data Studio/site publication remains separate.
 
 Rollback verifies the previously retained rows without rebuilding them:
 
@@ -99,9 +110,25 @@ This command holds the worker lock while it verifies and pins accepted local inp
 
 ## Step 4 weekly warehouse operation
 
-The local worker owns LL2 acquisition and writes its accepted state, raw evidence, quota ledger and Parquet exports under `data/`. The initial backfill and raw replay audit are complete. On 2026-11-11 the resumed worker made a seven-request catch-up and reached revision 217: 7,683 launches, 7,718 observation events, 15,861 sightings and zero conflicts. Its saved state is `waiting_weekly`, with the next refresh due 2026-11-18 11:38 UTC. The local Python worker does not run dbt or refresh Data Studio. Its Task Scheduler task was reported Ready at setup; current registration cannot be read through CIM in this shell.
+The local worker owns LL2 acquisition and writes accepted state, raw evidence, quota ledger and Parquet exports under `data/`. The initial history backfill and raw replay audit are complete. The 2026-11-11 scheduled worker catch-up reached revision 217 with 7,683 launches, 7,718 observation events, 15,861 sightings and zero conflicts. A separate manual refresh on 2026-11-14 made seven HTTP 200 calls across recent, upcoming and correction windows; all windows committed with zero conflicts, advancing accepted SQLite state to revision 220 (7,686 launches, 7,739 observation events, 16,151 sightings). On 2026-11-15, the worker checkpoint was reconciled to that accepted state and the verified revision-220 export and snapshot. It remains `waiting_weekly`, with its next action set to 2026-11-21 11:15 UTC, seven days after the manual refresh completed. Both local Task Scheduler jobs are disabled. The local Python worker does not run dbt or refresh Data Studio.
 
-The `OrbitalPulse-Warehouse` task checks daily at 15:00 local time and uses the local user's ADC. The user confirmed on 2026-11-11 that this is the only BigQuery project using the billing account; `.env.local` records that confirmation. Before a changed snapshot is published, the script checks project monthly query usage and table size against 20 GiB and 1 GiB reserves. At 15:00 on 2026-11-11, the scheduled invocation stopped before BigQuery calls because the snapshot ID had changed only due to repository/export metadata. I updated the guard to compare validated data and transformation fingerprints. Direct `--dry-run` and normal local scheduler invocations at 15:21 and 15:22 then skipped because those inputs matched production; no BigQuery call was made. The current Task Scheduler registration still cannot be read through CIM, though the dated log confirms the 15:00 invocation occurred. Both tasks require the PC awake and the user signed in; no cloud scheduler or compute resource was created.
+The `OrbitalPulse-Warehouse` task was configured to check daily at 15:00 local time, but was disabled with the LL2 task on 2026-11-14. Before disabling, its script checked project monthly query usage and table size against 20 GiB and 1 GiB reserves after confirming the account-scope setting. On 2026-11-14 a read-only preflight observed 31,729,909,760 billed query bytes and 608,837,658 stored bytes before the candidate run; the user had confirmed no other project uses this billing account.
+
+### Manual end-to-end pipeline test (2026-11-14)
+
+The manual plan `manual-e2e-20261114` made seven LL2 requests (all HTTP 200), archived each exact response to BigQuery before parsing and completed all three windows. The subsequent candidate-only `warehouse-run` loaded the 11 typed Parquet source relations, built dbt models in scratch, passed 108 dbt tests and validated all 15 reporting relations. The dbt run results record 1,468,006,400 billed bytes across 139 jobs. The warehouse result records another 335,544,320 billed bytes across 32 validation queries. Together those artifacts record 1,803,550,720 billed bytes. A separate read-only audit retrieved the seven `BYTES` bodies and matched their SHA-256 hashes at 439,353,344 billed bytes under a one-off 500 MB cap. The current production release was read back unchanged; no `--publish` flag was used. Artifacts are in `data/warehouse/runs/4710266eddbc46ae96fcf3b647ad214d/` and the local raw manifests under `data/raw/ll2/manual-e2e-20261114-*/`.
+
+The first warehouse attempt used `.venv` directly and stopped because the BigQuery adapter was missing from that invocation. `uv sync --offline --locked --group warehouse --inexact` synchronized the locked optional dependencies from cache; retrying with `uv run --offline --no-sync --locked --group warehouse --env-file .env.local` completed successfully. No repository code was changed for this run.
+
+### One-off Cloud Run worker validation (2026-11-11)
+
+Terraform deployed `sla-ll2-worker` with one task, 1 vCPU, 4 GiB, a 600-second timeout and zero retries. The job has no schedule. Its first execution (`sla-ll2-worker-c5qsb`, 18:00:32–18:04:20 UTC) issued four LL2 requests: three HTTP 200 and one HTTP 502 with `Retry-After: 60`. Those four bodies were archived directly to BigQuery and their hashes matched. That worker checkpoint paused in `waiting_quota` and did not finish the refresh.
+
+Later, the user requested one LL2 request. The second Cloud Run execution (`sla-ll2-worker-9hz4h`) was launched with `WORKER_MAX_REQUESTS=1`, but a hard-coded override in `tick_worker` reset the cap to eight. It actually made seven LL2 requests, all HTTP 200. A read-only BigQuery query found seven new unique response IDs and matched SHA-256 for all seven bodies; the query processed 10 MiB. The isolated cloud copy reached `waiting_weekly`, revision 220. It did not change local SQLite or the local worker state. The launcher detected `requests_this_invocation=7` instead of the requested 1 and exited with an error; its temporary checkpoint is left to its two-hour table expiry.
+
+I corrected the local code so `tick_worker` takes an explicit per-tick request limit, and added an offline regression test. That fix is not yet in the deployed image. Do not trigger the current Cloud Run image again: it still ignores the one-request override. The seven exact request timestamps from the second run are now recorded in `data/quota.json`; at the time of reconciliation, seven requests remained in the rolling hour. The earlier four requests were already outside that window.
+
+The two 2026-11-11 Cloud Run executions prove direct raw-response archival, not a durable hosted worker or scheduled service. At that time the remaining free-tier headroom and EU outbound LL2 transfer pricing were not verified, so zero cost was not established for those executions. The 2026-11-14 read-only project preflight subsequently confirmed query/storage usage within the user’s stated monthly BigQuery allowances; it does not resolve Cloud Run egress pricing or future billing continuity. There is no Cloud Scheduler or persistent cloud checkpoint bucket.
 
 For each manual run, pause local acquisition for the duration of the warehouse snapshot/build so SQLite and Parquet cannot change during pinning:
 
@@ -125,15 +152,15 @@ For a later weekly release, use the active release ID from the latest successful
 .\scripts\worker.ps1 -Action Resume -Reason "Warehouse run finished; local state is ready to continue"
 ```
 
-The worker's seven-day local refresh interval and the weekly BigQuery build are separate schedules. The warehouse command does not trigger the worker's next update, and the local worker does not invoke BigQuery.
+The worker's seven-day local refresh interval and the weekly warehouse build are separate schedules. The warehouse command does not trigger the worker's next update. The local worker appends raw response bodies to BigQuery before parsing; it does not run the warehouse build.
 
-The granular offline `state-export`, `input-snapshot` and `warehouse-prepare` commands and explicit `warehouse-load` remain available. Load-plan contract v3 records an optional source-dataset override for expiring scratch tests; normal loads still target `space_launch_atlas_source`. Prepared files use a short hash prefix plus a full-identity collision check to stay within Windows path limits. Raw manifests and bodies are verified locally, not uploaded.
+The granular offline `state-export`, `input-snapshot` and `warehouse-prepare` commands and explicit `warehouse-load` remain available. Load-plan contract v3 records an optional source-dataset override for expiring scratch tests; normal loads still target `space_launch_atlas_source`. Prepared files use a short hash prefix plus a full-identity collision check to stay within Windows path limits. Raw manifests and bodies are still verified from local files for replay and warehouse snapshot integrity; the separate raw-response archive contains their exact HTTP response bodies in BigQuery.
 
 Cloud integration is opt-in and uses the existing scratch dataset, local ADC, and seven-day expiration:
 
 ```powershell
 $env:RUN_BIGQUERY_INTEGRATION = "1"
-uv run --locked --group warehouse --env-file .env.local pytest tests/test_bigquery_releases.py tests/test_reporting_pipeline.py -m integration --basetemp .pytest-tmp -q
+uv run --locked --group warehouse --env-file .env.local python -m pytest tests/test_bigquery_releases.py tests/test_reporting_pipeline.py -m integration --basetemp .pytest-tmp -q
 Remove-Item Env:RUN_BIGQUERY_INTEGRATION
 ```
 
@@ -196,6 +223,7 @@ Smoke uses five detailed records per page by default. History/recent/upcoming so
 - `quota.json`: shared local rolling request reservations and provider retry-after state. A failed transport still consumes a reservation.
 - `exports/generations/<revision-id>/`: immutable Parquet candidate, quality and manifest. `exports/active.json` points to the last validated generation.
 - `normalized/<run-id>/`: legacy/per-run replay outputs; not the cross-run state export.
+- `worker/superseded-replay-manifests.json`: manifest variants retained from older verification replays after their duplicate replay directories were removed. Canonical raw responses remain under `raw/`.
 - `.writer.lock`: exclusive local writer lock. A stale lock must be checked against its PID before removing that file only.
 - `warehouse/prepared/<snapshot-hash-prefix>/tables/`: local Parquet copies tagged with the input snapshot.
 - `warehouse/plans/<plan-hash-prefix>/load-plan.json`: deterministic, offline local-file-to-BigQuery load plan. No GCS upload is performed. A load receipt is written only after the explicit BigQuery loader confirms destination row counts.
@@ -235,7 +263,7 @@ Each complete source window means its saved query finished, not that LL2 is glob
 
 Transient transport/500/502/503/504 failures receive at most three attempts within quota. Redirects and unsafe pagination are rejected. Raw errors are retained but never normalized as empty successful data. Fix validation or parser issues and replay from saved raw. A request accepted before a crash still counts against the reservation ledger.
 
-Retention stays manual: retain raw evidence, source request provenance, current SQLite state and observation history. No pruning task or cloud copy exists. Verify available disk before large backfill batches; stop safely if storage becomes insufficient.
+Local retention stays manual: preserve raw evidence, source request provenance, current SQLite state and observation history. Exact LL2 response bodies also have a BigQuery archive, but there is no persistent GCS archive or durable hosted worker-state store, and no pruning task is configured. Verify available disk before large backfill batches; stop safely if storage becomes insufficient.
 
 ## Checks and future stages
 
@@ -243,4 +271,4 @@ Terraform installation, resource declarations, live deployment and offline mock 
 
 Default tests are offline. Install `uv sync --locked --group warehouse` for all-code checks, then run Ruff lint/format, Pyright and `pytest --basetemp .pytest-tmp`. Linux and Windows CI have both passed these checks without cloud credentials. The base CLI runtime remains usable without the warehouse group.
 
-The LL2 acquisition worker and guarded warehouse task were installed and reported Ready through Windows Task Scheduler. The current restricted shell cannot query Task Scheduler CIM, but the warehouse schedule log records its 15:00 invocation on 2026-11-11; after the snapshot-fingerprint fix, manual checks safely skipped because production inputs were unchanged. The same local Dagster dependency chain has executed acquisition, snapshot, load, dbt/checks, retention and production activation. Data Studio's no-cost edition requires a Google account and hosted report/data-source creation, not a server instance. The user's personal Google account owns the private report and queries BigQuery under the documented scoped IAM exception. All six report sources now use production relations; the report remains private and has no recurring refresh schedule. Managed Workspace/Cloud Identity is required only for Data Studio's optional service-account mode. The console last showed an active trial; private expiry/cost observations remain in ignored evidence. No account upgrade, paid usage or GCS is authorized; continuing within free usage after the trial requires active billing or a compatible alternative. Current run usage and local cadence are summarized in ROADMAP.md.
+The LL2 acquisition worker and guarded warehouse task were installed and reported Ready earlier, but both Windows Task Scheduler registrations were disabled on 2026-11-14 at the user’s request. No local worker process was running after the manual test. The same local Dagster dependency chain completed a fresh candidate-only run on 2026-11-14: 108 dbt tests and 15 reporting-relation checks passed, with the production pointer unchanged. Data Studio’s no-cost edition requires a Google account and hosted report/data-source creation, not a server instance. The user’s personal Google account owns the private report and queries BigQuery under the documented scoped IAM exception. All six report sources remain on production relations; the report remains private and has no recurring refresh schedule. Managed Workspace/Cloud Identity is required only for Data Studio’s optional service-account mode. The console last showed an active trial; no account upgrade, paid usage or GCS is authorized. Continuing within free usage after the trial requires active billing or a compatible alternative. Current run usage and local cadence are summarized in ROADMAP.md.

@@ -34,3 +34,9 @@ variable "enable_data_studio_service_account" {
   type        = bool
   default     = false
 }
+
+variable "worker_image_uri" {
+  description = "Optional Artifact Registry image URI for the one-task Cloud Run worker job."
+  type        = string
+  default     = ""
+}

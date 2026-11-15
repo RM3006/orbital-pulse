@@ -23,6 +23,7 @@ from launch_atlas.config import Settings
 from launch_atlas.normalize import PARSER_VERSION, normalize
 from launch_atlas.storage.local import LocalStore, atomic_json, digest
 from launch_atlas.storage.state import StateStore
+from launch_atlas.warehouse.raw_json import RawResponseArchive
 from launch_atlas.windows import split_history_year
 
 
@@ -158,6 +159,7 @@ def run_plan(
     plan_id: str,
     *,
     transport: httpx.BaseTransport | None = None,
+    raw_archive: RawResponseArchive | None = None,
 ) -> dict[str, Any]:
     """Run pending frozen windows with one invocation-wide request budget."""
     local = LocalStore(settings.data_dir)
@@ -201,6 +203,7 @@ def run_plan(
             budget=budget,
             include_suborbital=bool(query.get("include_suborbital", False)),
             last_updated=bool(query.get("last_updated", False)),
+            raw_archive=raw_archive,
         )
         source_count = max(
             (int(page.get("source_count", 0)) for page in manifest["pages"]), default=0
@@ -406,6 +409,7 @@ def ingest(
     budget: RequestBudget | None = None,
     include_suborbital: bool = False,
     last_updated: bool = False,
+    raw_archive: RawResponseArchive | None = None,
 ) -> dict[str, Any]:
     store = LocalStore(settings.data_dir)
     with store.lock():
@@ -458,6 +462,7 @@ def ingest(
         ) -> None:
             manifest["requests_total"] += 1
             entry: dict[str, Any] = {
+                "request_number": manifest["requests_total"],
                 "url": url,
                 "endpoint": urlsplit(url).path,
                 "query": parse_qs(urlsplit(url).query),
@@ -482,6 +487,17 @@ def ingest(
                 )
             manifest["attempts"].append(entry)
             store.save_manifest(manifest)
+            if response is not None and raw_archive is not None:
+                # Preserve the source response in BigQuery before parsing or
+                # accepting it into SQLite state. Local raw remains the
+                # recovery source until hosted checkpointing is complete.
+                raw_archive.archive_response(
+                    run_id,
+                    manifest["requests_total"],
+                    str(manifest.get("kind", "live")),
+                    entry,
+                    response.content,
+                )
 
         try:
             seen = {entry["url"] for entry in manifest["pages"]}
@@ -522,8 +538,13 @@ def ingest(
                 manifest["status"] = "validation_failed"
         except (ValueError, OSError, pl.exceptions.PolarsError) as exc:
             manifest = store.manifest(run_id)
-            manifest["status"] = "normalization_failed"
-            manifest["error"] = str(exc)
+            if manifest.get("status") == "failed":
+                # Keep the primary extraction/archive failure visible. A replay
+                # diagnostic must not relabel it as a normalization failure.
+                manifest["replay_error"] = str(exc)
+            else:
+                manifest["status"] = "normalization_failed"
+                manifest["error"] = str(exc)
         store.save_manifest(manifest)
         return manifest
 

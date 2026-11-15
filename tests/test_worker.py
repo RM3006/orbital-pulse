@@ -135,6 +135,25 @@ def test_quota_wait_and_resume_from_saved_offset_without_repeating_page(
     assert StateStore(tmp_path).summary()["launch_current"] == 2
 
 
+def test_worker_tick_respects_a_one_request_call_budget(
+    tmp_path: Path, records: list[dict[str, Any]]
+) -> None:
+    settings, now = setup_worker(tmp_path)
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(str(request.url))
+        return httpx.Response(
+            200,
+            json={"count": 1, "next": None, "results": [records[0]]},
+        )
+
+    result = tick_worker(settings, max_requests=1, now=now, transport=httpx.MockTransport(handler))
+
+    assert len(calls) == 1
+    assert result["last_result"]["requests_this_invocation"] == 1
+
+
 def test_three_failures_across_clients_latch_and_resume_preserves_quota(tmp_path: Path) -> None:
     settings, _ = setup_worker(tmp_path)
     calls = 0
