@@ -20,7 +20,12 @@ dependencies = [
 launch-atlas = "launch_atlas.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8.4,<10", "ruff>=0.14,<1", "pyright>=1.1.407,<2"]
+dev = [
+    "pytest>=8.4,<10",
+    "ruff>=0.14,<1",
+    "pyright>=1.1.407,<2",
+    "playwright>=1.50,<2",
+]
 warehouse = [
     "dagster>=1.10,<2",
     "dagster-dbt>=0.26,<1",
@@ -30,6 +35,11 @@ warehouse = [
     "google-auth-oauthlib>=1.2,<2",
 ]
 cloud-worker = ["google-cloud-bigquery>=3,<4"]
+app = [
+    "dash>=3,<5",
+    "google-cloud-bigquery>=3,<4",
+    "plotly>=6,<7",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["pipelines/launch_atlas"]

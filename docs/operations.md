@@ -52,7 +52,7 @@ The test deliberately leaves a simulated interrupted claim locked until the scra
 
 ## Step 3 warehouse workflow
 
-The optional `warehouse` group supplies BigQuery, dbt and Dagster. Cloud loads send prepared Parquet directly from local disk for the 11 typed source relations; the separate raw JSON archive is already in BigQuery. Raw archival does not normalize records or replace the Parquet load. The current production release remains `sla-release-v1-d4f4ae640e0934f11d7ad4c4`, published on 2026-11-11. On 2026-11-14, candidate snapshot `sla-input-v1-4d3caff1394ef1846b482c769c4cd60ebc32bd6756a8281e22eb64980a6ebba4` built in scratch: 20 table models, 11 views, 108 dbt tests and 15 reporting-relation checks passed. The candidate was not published, so the private report still reads the active 2026-11-11 release. The old revision-95 scratch preview expires on 2026-11-16 and is not used by the report.
+The optional `warehouse` group supplies BigQuery, dbt and Dagster. Cloud loads send prepared Parquet directly from local disk for the 11 typed source relations; the separate raw JSON archive is already in BigQuery. Raw archival does not normalize records or replace the Parquet load. Production release `sla-release-v1-46fb47e6c45d91744562b749` is active from the revision-220 data frozen on 2026-11-14. The original candidate passed 108 dbt tests and 15 reporting-relation checks; the 2026-11-15 publishing run re-pinned the same Parquet file hashes and dbt model sources and activated that data. The snapshot ID changed because repository-commit and generated-export metadata changed. The private report remains bound to stable production views, but its cache was not manually refreshed after activation. The old revision-95 scratch preview expires on 2026-11-16 and is not used by the report.
 
 The integrated command runs the same dependency chain locally and in tests:
 
@@ -88,7 +88,7 @@ For a new production namespace, after required history is complete and a candida
 uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-run --data-dir data --publish --expected-active none
 ```
 
-This first full-history production activation has already run. The current release is `sla-release-v1-d4f4ae640e0934f11d7ad4c4`; do not repeat the `none` command against the existing namespace. For later activation, pass the actual previous release ID as `--expected-active`. The gate runs before retention. Each release retains nine marts and six dimension/bridge relations with `release_id`; stable views use one active pointer. Schema, row counts, snapshot scope, SHA-256 row-multiset digests and manifest identities are checked before activation. Candidate builds cannot overwrite retained rows. A stale writer or failed candidate preserves the current pointer. This is internal warehouse activation; Data Studio/site publication remains separate.
+This first full-history production activation has already run. The current release is `sla-release-v1-46fb47e6c45d91744562b749`; do not repeat the `none` command against the existing namespace. For later activation, pass the actual previous release ID as `--expected-active`. The gate runs before retention. Each release retains nine marts and six dimension/bridge relations with `release_id`; stable views use one active pointer. Schema, row counts, snapshot scope, SHA-256 row-multiset digests and manifest identities are checked before activation. Candidate builds cannot overwrite retained rows. A stale writer or failed candidate preserves the current pointer. This is internal warehouse activation; Data Studio/site publication remains separate.
 
 Rollback verifies the previously retained rows without rebuilding them:
 
@@ -120,6 +120,10 @@ The manual plan `manual-e2e-20261114` made seven LL2 requests (all HTTP 200), ar
 
 The first warehouse attempt used `.venv` directly and stopped because the BigQuery adapter was missing from that invocation. `uv sync --offline --locked --group warehouse --inexact` synchronized the locked optional dependencies from cache; retrying with `uv run --offline --no-sync --locked --group warehouse --env-file .env.local` completed successfully. No repository code was changed for this run.
 
+### Production activation of the 2026-11-14 data (2026-11-15)
+
+The preflight read 43,714,084,864 project query bytes and 621,539,502 stored bytes with the single-project free-tier scope confirmed. The publishing run re-used the same revision-220 Parquet source files and unchanged dbt model files as the candidate-only run, with the frozen analysis time still 2026-11-14T11:12:19.119125Z. A new content-addressed snapshot ID, `sla-input-v1-1b061c90a13d0a376e51f50226828cdfb2112e1e584c8fc1388eac13b3c60f9c`, was created because the repository commit and generated-export metadata had changed since the original candidate snapshot `sla-input-v1-4d3caff1394ef1846b482c769c4cd60ebc32bd6756a8281e22eb64980a6ebba4`. All 108 dbt tests and 15 reporting-relation checks passed. The run activated `sla-release-v1-46fb47e6c45d91744562b749`, replacing `sla-release-v1-d4f4ae640e0934f11d7ad4c4`; the active pointer and snapshot were read back. Run artifacts are in `data/warehouse/runs/157275cce96f45e1ac681c2bb733376b/`. Billing recorded 1,468,006,400 bytes across 139 dbt jobs and 683,671,552 bytes across 94 warehouse queries, totaling 2,151,677,952 bytes. The private Looker Studio report remains bound to stable production views but was not manually refreshed after activation; it has no recurring refresh schedule.
+
 ### One-off Cloud Run worker validation (2026-11-11)
 
 Terraform deployed `sla-ll2-worker` with one task, 1 vCPU, 4 GiB, a 600-second timeout and zero retries. The job has no schedule. Its first execution (`sla-ll2-worker-c5qsb`, 18:00:32–18:04:20 UTC) issued four LL2 requests: three HTTP 200 and one HTTP 502 with `Retry-After: 60`. Those four bodies were archived directly to BigQuery and their hashes matched. That worker checkpoint paused in `waiting_quota` and did not finish the refresh.
@@ -143,7 +147,7 @@ Confirm the worker status is stopped before starting the warehouse command. In t
 Candidate-only preview and later activation are two separate warehouse runs, so include both in the monthly query budget. The first full-history production release has already been activated. For a later release, first confirm free-tier headroom and use the previous active release ID:
 
 ```powershell
-uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-run --data-dir data --publish --expected-active sla-release-v1-d4f4ae640e0934f11d7ad4c4
+uv run --locked --group warehouse --env-file .env.local python -m launch_atlas warehouse-run --data-dir data --publish --expected-active sla-release-v1-46fb47e6c45d91744562b749
 ```
 
 For a later weekly release, use the active release ID from the latest successful result as `--expected-active <release-id>`. A routine production refresh can use one publishing invocation after the monthly-headroom check because the command itself runs candidate validation before activation. Record its run directory and billed bytes. Resume acquisition after the warehouse run only when weekly local source updates should restart:
@@ -272,3 +276,34 @@ Terraform installation, resource declarations, live deployment and offline mock 
 Default tests are offline. Install `uv sync --locked --group warehouse` for all-code checks, then run Ruff lint/format, Pyright and `pytest --basetemp .pytest-tmp`. Linux and Windows CI have both passed these checks without cloud credentials. The base CLI runtime remains usable without the warehouse group.
 
 The LL2 acquisition worker and guarded warehouse task were installed and reported Ready earlier, but both Windows Task Scheduler registrations were disabled on 2026-11-14 at the user’s request. No local worker process was running after the manual test. The same local Dagster dependency chain completed a fresh candidate-only run on 2026-11-14: 108 dbt tests and 15 reporting-relation checks passed, with the production pointer unchanged. Data Studio’s no-cost edition requires a Google account and hosted report/data-source creation, not a server instance. The user’s personal Google account owns the private report and queries BigQuery under the documented scoped IAM exception. All six report sources remain on production relations; the report remains private and has no recurring refresh schedule. Managed Workspace/Cloud Identity is required only for Data Studio’s optional service-account mode. The console last showed an active trial; no account upgrade, paid usage or GCS is authorized. Continuing within free usage after the trial requires active billing or a compatible alternative. Current run usage and local cadence are summarized in ROADMAP.md.
+
+
+## Local Dash application
+
+The application reads BigQuery directly and starts without provisioning or refreshing warehouse data. Install the locked `app` group and run from the repository root:
+
+```powershell
+uv sync --locked --group app --group warehouse
+uv run --group app python -m launch_atlas.app
+```
+
+Visit `http://127.0.0.1:8050`. To use another local port, append `--port 8051`. The server binds only to loopback. Stop with Ctrl+C.
+
+The default project is the existing Atlas project. `ATLAS_PROJECT_ID` can override it. `ATLAS_READER_SERVICE_ACCOUNT` overrides the default `sla-app-reader@<project>.iam.gserviceaccount.com`. Google user ADC is read from the standard location, honoring `CLOUDSDK_CONFIG` or an explicit `GOOGLE_APPLICATION_CREDENTIALS` path. Secrets and account configuration stay outside version control. The app never loads `.env.local` implicitly.
+
+The reader requests short-lived `bigquery.readonly` impersonation tokens. Its IAM grants query-job creation and read access only to the reporting/source datasets. The human operator has Token Creator only on that reader. Terraform definitions are in `infra/terraform/app_reader.tf`; the local enable flag/operator member are in ignored `app-reader.auto.tfvars.json`. Enabling IAM Credentials and creating these bindings required and received explicit approval on 2026-11-21. No key, paid host, public endpoint, schedule, data write or release activation was created.
+
+A first page load checks the active pointer and validated manifest, then reads retained rows, including configuration/family membership, with a single release/snapshot pair. It also resolves the corresponding source launch-context table for names, dimensions and qualified launch rows. A dry run precedes the SELECT, capped at 250 MB. No disk snapshot is used. The process caches up to eight editions, with no BigQuery queries for filters, comparisons, search or pagination; a reload checks for a new active release and preserves the previous edition on failure. Restart after eight distinct releases to clear the bounded cache. The expanded query billed 125,829,120 bytes on its first uncached load; a later identical load hit BigQuery's query cache and billed zero bytes.
+
+The map uses Plotly MapLibre with attributed CARTO/OpenStreetMap tiles. Browsers need outbound access to the tile/font endpoints for the basemap; no Mapbox token, paid map account or new cloud resource was configured. World view, Florida close-up, zoom buttons, scrolling, dragging and point selection are available. World wrapping is disabled on the MapLibre instance; the responsive map is capped at 1100 px and World view fits one world and the mapped latitude range in a responsive 2:1 frame. Map/selector coverage is all 27 located sites active since January 2024 in this edition; the heatmap retains the six busiest sites. Site and Florida controls explicitly reset the camera after a user zoom/pan. Selecting a site zooms to its actual coordinates. Kennedy and Cape Canaveral overlap at world scale because their coordinates are close; the close-up separates their markers. Browser acceptance waits for tile loading and resizing before screenshots.
+
+If the page reports a connection error, check ADC validity, permission to impersonate the reader, the reader's BigQuery roles, and outbound access to Google APIs. The app intentionally does not fall back to a broader user credential or example data. Error messages do not include auth responses or SQL. If the active snapshot's source labels have expired or disappeared, loading fails rather than mixing editions.
+
+For browser acceptance with the local server running:
+
+```powershell
+uv run playwright install chromium
+uv run --group app python scripts/verify_atlas_app.py
+```
+
+Screenshots and `acceptance.json` go to ignored `data/app-review/`. The current acceptance includes 20 page/viewport captures plus Florida, 1900 px single-world and compact B1063-context captures, comparison years, searchable/paginated outcomes, serial-only flight histories and associated vehicle context, unchanged fleet totals, ascending manifest windows and planned-provider/configuration/family bars. It also checks every mapped site has a selector option, selection beyond the first six works, all markers are inside World view, and reuse values are black above smaller grey labels. It checks that provider/configuration bar totals match the filtered manifest count and that overlapping family bars carry a non-additivity note. Default pytest remains offline. Changes to source data can legitimately change counts and chart labels relative to the approved 11 November screenshots; typography, layout and interactions remain the reference. Actual stored-byte/query headroom should be checked before sustained testing; the per-query cap does not enforce the billing account's 1 TiB monthly allowance.

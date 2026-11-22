@@ -1,0 +1,86 @@
+/* Additions to the original scoped mockup stylesheet. */
+html, body { margin: 0; background: #f5f6f8; }
+#printed-launch-atlas { min-height: 100vh; }
+#printed-launch-atlas .atlas-connection-status:not(:empty) {
+  margin: 24px clamp(18px,4.2vw,47px); padding: 16px; border: 1px solid #d9dee6;
+  background: #fff; border-radius: 8px;
+}
+#printed-launch-atlas .atlas-connection-status:empty { display: none; }
+#printed-launch-atlas .atlas-edition-details,
+#printed-launch-atlas .atlas-reload-panel { margin: 9px clamp(18px,4.2vw,47px); font-size: 11px; color: #505761; }
+#printed-launch-atlas .atlas-edition-details dd { overflow-wrap: anywhere; margin: 3px 0 9px; }
+#printed-launch-atlas .atlas-reload-panel { padding-bottom: 12px; }
+#printed-launch-atlas .atlas-reload-panel button { background: none; border: 0; padding: 0; color: #223da4; font: inherit; text-decoration: underline; cursor: pointer; }
+#printed-launch-atlas .atlas-live-map { background: #f5f6f8; border-radius: 4px; }
+#printed-launch-atlas .atlas-live-map-board { position: relative; width: min(100%,546px); aspect-ratio: 698/339; margin: auto; }
+#printed-launch-atlas .atlas-live-map-board img { display: block; width: 100%; height: 100%; }
+#printed-launch-atlas .atlas-live-map-dot { position: absolute; padding: 0; width: var(--diameter); aspect-ratio: 1;
+  min-width: 6px; border: 1px solid white; border-radius: 50%; background: #8192cebd;
+  transform: translate(-50%,-50%); cursor: pointer; }
+#printed-launch-atlas .atlas-live-map-dot[data-selected="true"] { background: #223da4; border: 2px solid white; z-index: 1; }
+#printed-launch-atlas .atlas-live-map-dot:focus-visible { outline: 2px solid #223da4; outline-offset: 2px; }
+#printed-launch-atlas .atlas-cadence-months { grid-template-columns: repeat(var(--months,35),minmax(0,1fr)); }
+#printed-launch-atlas .atlas-flight-track { overflow: visible; }
+#printed-launch-atlas .atlas-flight-mark { cursor: help; }
+#printed-launch-atlas .js-plotly-plot { min-width: 0; }
+#printed-launch-atlas #annual-chart { overflow: hidden; }
+#printed-launch-atlas .atlas-outcome-table td:nth-child(2) { font-weight: 600; }
+@media (max-width: 620px) {
+  #printed-launch-atlas .atlas-outcome-table { min-width: 0; }
+  #printed-launch-atlas .atlas-outcome-table th:first-child { width: 62%; }
+  #printed-launch-atlas :is(.atlas-site-gap-table,.atlas-flight-table),
+  #printed-launch-atlas :is(.atlas-site-gap-table,.atlas-flight-table) tbody { display: block; }
+  #printed-launch-atlas :is(.atlas-site-gap-table,.atlas-flight-table) thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+  }
+  #printed-launch-atlas :is(.atlas-site-gap-table,.atlas-flight-table) tr {
+    display: block; border-bottom: 1px solid var(--line); padding: 10px 0;
+  }
+  #printed-launch-atlas :is(.atlas-site-gap-table,.atlas-flight-table) :is(th,td) {
+    border: 0; padding: 3px 0;
+  }
+  #printed-launch-atlas :is(.atlas-site-gap-table,.atlas-flight-table) tbody th {
+    display: block; font-weight: 600; overflow-wrap: normal;
+  }
+  #printed-launch-atlas :is(.atlas-site-gap-table,.atlas-flight-table) td {
+    display: flex; justify-content: space-between; gap: 12px;
+  }
+  #printed-launch-atlas :is(.atlas-site-gap-table,.atlas-flight-table) td::before {
+    content: attr(data-label); font: 400 12px/1.45 var(--body); color: var(--muted);
+    text-align: left; white-space: normal;
+  }
+}
+
+#printed-launch-atlas .atlas-filter-bar { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: end; margin: 0 0 20px; }
+#printed-launch-atlas .atlas-pagination, #printed-launch-atlas .atlas-map-actions { display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+#printed-launch-atlas :is(.atlas-pagination,.atlas-map-actions) button { border: 1px solid var(--bar); border-radius: 4px; padding: 6px 9px; color: var(--blue); background: white; font: 500 13px/1.2 var(--body); cursor: pointer; }
+#printed-launch-atlas button:disabled { opacity: .45; cursor: default; }
+#printed-launch-atlas .atlas-pagination [role=status] { font: 400 11px/1.4 var(--mono); }
+#printed-launch-atlas .atlas-search { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 12px 0; }
+#printed-launch-atlas .atlas-search input { width: min(100%,360px); border: 1px solid var(--bar); border-radius: 4px; padding: 7px; font: 400 13px/1.3 var(--body); color: var(--ink); }
+#printed-launch-atlas .atlas-entity-context { font: 400 12px/1.45 var(--body); color: var(--muted); margin-top: 4px; }
+#printed-launch-atlas .atlas-entity-context summary { font-weight: 400; }
+#printed-launch-atlas .atlas-outcome-table th:first-child { width: 42%; }
+#printed-launch-atlas #atlas-map-graph { border-radius: 4px; overflow: hidden; }
+@media (max-width: 620px) {
+  #printed-launch-atlas .atlas-outcome-table th:first-child { width: 62%; }
+}
+
+#printed-launch-atlas #atlas-map-graph { max-width: 1100px; margin-inline: auto; }
+#printed-launch-atlas #atlas-map-graph[data-map-view="world"] { height: auto !important; aspect-ratio: 2 / 1; }
+#printed-launch-atlas .atlas-booster-context { display: inline-grid; grid-template-columns: repeat(3,minmax(0,max-content)); gap: 0 25px; max-width: 100%; margin: 5px 0 14px; }
+#printed-launch-atlas .atlas-booster-context > div { position: relative; display: flex; flex-direction: column; min-width: 0; }
+#printed-launch-atlas .atlas-booster-context > div + div::before { content: "-"; position: absolute; top: 0; left: -16px; color: var(--ink); font-size: 14px; }
+#printed-launch-atlas .atlas-booster-context dt { font: 400 11px/1.45 var(--body); color: #6b7280; margin-top: 3px; }
+#printed-launch-atlas .atlas-booster-context dd { order: -1; font: 500 14px/1.45 var(--body); color: var(--ink); margin: 0; overflow-wrap: anywhere; }
+#printed-launch-atlas .atlas-planned-panel { margin-bottom: 24px; }
+#printed-launch-atlas .atlas-planned-controls { margin: 14px 0; }
+#printed-launch-atlas .atlas-planned-bars { max-height: 460px; overflow-y: auto; padding: 2px 12px 2px 0; margin-top: 16px; display: grid; gap: 13px; }
+#printed-launch-atlas .atlas-planned-label { display: flex; justify-content: space-between; gap: 14px; font-size: 13px; margin-bottom: 5px; }
+#printed-launch-atlas .atlas-planned-label span { overflow-wrap: anywhere; }
+#printed-launch-atlas .atlas-planned-label b { flex: none; font: 500 12px/1.45 var(--mono); }
+#printed-launch-atlas .atlas-planned-track { height: 10px; background: var(--track); }
+#printed-launch-atlas .atlas-planned-track i { display: block; height: 100%; background: var(--blue); }
+@media (max-width:620px) {
+  #printed-launch-atlas .atlas-planned-controls .atlas-control { width: 100%; }
+}
