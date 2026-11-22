@@ -12,7 +12,7 @@ A local Python CLI saves replayable LL2 responses, maintains SQLite current stat
 
 The active validated BigQuery release is `sla-release-v1-46fb47e6c45d91744562b749`, activated on 2026-11-15 from revision-220 data with analytical cut `2026-11-14T11:12:19.119125+00:00`. The local Dash app resolves that active pointer at runtime and reads the retained reporting data directly. The mockup is a visual reference with an older 11 November edition; its sample values are not used as live dashboard data. The existing private Data Studio reports are retained as earlier prototypes.
 
-Render free with scheduled GitHub Actions keep-alive requests was selected on 2026-11-22. The repository is connected and the dedicated reader key is saved in Render. Local predeployment checks passed: 151 offline tests, browser acceptance across five pages/four widths, and a real-edition Linux peak of 214.4 MiB under a 512 MiB / 0.1 CPU limit. Current BigQuery usage and Render free allowances were checked. The deployment branch is `codex/render-free-deployment`; no Render service or public URL exists. See the [Step 5 plan and evidence](ROADMAP.md#render-free-deployment-plan--2026-11-22).
+The public dashboard is live at [space-launch-atlas.onrender.com](https://space-launch-atlas.onrender.com/). The user deployed the merged Render Blueprint on 2026-11-22. Signed-out HTTPS access, all five pages, representative controls, reload, release/snapshot labels and mobile overview/manifest/map were checked; the edition remains the validated 14 Nov 2026 data cut. Five-minute GitHub health pings are enabled, and the [first manual run](https://github.com/RM3006/orbital-pulse/actions/runs/45045969217) passed. Scheduled timing remains best effort. See [Step 5](ROADMAP.md#render-free-deployment-plan--2026-11-22) and [operations](docs/operations.md#render-deployment-configuration) for observations and controls.
 
 The previous production release built 20 table models, 11 views and 108 tests; nine analytical marts cover launch outcomes, flown hardware, reuse and landings, supported turnaround, site cadence, schedule movement, upcoming launches and coverage. The protected BigQuery raw-response table now contains 322 rows: 304 historical local responses, 11 from two Cloud Run executions and seven from the manual refresh. See [ROADMAP.md](ROADMAP.md) for dated evidence and next actions.
 
@@ -55,7 +55,7 @@ uv run playwright install chromium
 uv run --group app python scripts/verify_atlas_app.py
 ```
 
-Generated acceptance evidence is saved under ignored `data/app-review/`. The local server remains available for development. Render deployment files are prepared, but no Render service or public URL has been created.
+Generated local acceptance evidence is saved under ignored `data/app-review/`. The local server remains available for development. The public app is [space-launch-atlas.onrender.com](https://space-launch-atlas.onrender.com/); its initial hosted acceptance evidence is under ignored `data/render-live/`.
 
 ## Quick start
 
