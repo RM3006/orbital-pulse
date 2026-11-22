@@ -1,5 +1,24 @@
 mock_provider "google" {}
 
+run "app_reader_is_keyless_and_read_only" {
+  command = plan
+  variables {
+    enable_app_reader   = true
+    app_reader_operator = "user:reader@example.com"
+  }
+  assert {
+    condition = (
+      google_project_iam_member.app_reader_jobs[0].role == "roles/bigquery.jobUser" &&
+      length(google_bigquery_dataset_iam_member.app_reader_data) == 2 &&
+      alltrue([for binding in google_bigquery_dataset_iam_member.app_reader_data :
+        binding.role == "roles/bigquery.dataViewer"
+      ]) &&
+      google_service_account_iam_member.app_reader_operator[0].role == "roles/iam.serviceAccountTokenCreator"
+    )
+    error_message = "The app identity must only read datasets and create query jobs, with keyless operator access."
+  }
+}
+
 variables {
   project_id = "atlas-test-project"
   location   = "EU"
