@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, Literal
 
 PROJECT = "project-5584fea9-baf6-40ef-a9a"
 READ_SCOPE = "https://www.googleapis.com/auth/bigquery.readonly"
@@ -50,6 +50,7 @@ class AppSettings:
     source_dataset: str = "space_launch_atlas_source"
     location: str = "europe-west1"
     maximum_bytes_billed: int = 250_000_000
+    auth_mode: Literal["local", "hosted"] = "local"
 
     def __post_init__(self) -> None:
         if not re.fullmatch(r"[a-z][a-z0-9-]{4,61}[a-z0-9]", self.project):
@@ -61,7 +62,14 @@ class AppSettings:
 
     @classmethod
     def from_env(cls) -> AppSettings:
-        return cls(project=os.getenv("ATLAS_PROJECT_ID", PROJECT))
+        auth_mode = os.getenv("ATLAS_AUTH_MODE", "local").strip().lower()
+        if auth_mode == "local":
+            mode: Literal["local", "hosted"] = "local"
+        elif auth_mode == "hosted":
+            mode = "hosted"
+        else:
+            raise ValueError("ATLAS_AUTH_MODE must be 'local' or 'hosted'")
+        return cls(project=os.getenv("ATLAS_PROJECT_ID", PROJECT), auth_mode=mode)
 
 
 @dataclass(frozen=True)
@@ -99,17 +107,35 @@ def edition_sql(settings: AppSettings, snapshot_id: str) -> str:
 
 
 def local_client(settings: AppSettings) -> Any:
-    """Use short-lived read-only impersonation tokens, never service-account keys."""
-    from google.auth import impersonated_credentials
+    """Create a read-only BigQuery client using local or hosted credentials."""
     from google.cloud import bigquery
-    from google.oauth2.credentials import Credentials
 
+    configured = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+    default_account = "sla-render-reader" if settings.auth_mode == "hosted" else "sla-app-reader"
     target = os.getenv(
-        "ATLAS_READER_SERVICE_ACCOUNT", f"sla-app-reader@{settings.project}.iam.gserviceaccount.com"
+        "ATLAS_READER_SERVICE_ACCOUNT",
+        f"{default_account}@{settings.project}.iam.gserviceaccount.com",
     )
     if not re.fullmatch(r"[a-z][a-z0-9-]+@[a-z0-9-]+\.iam\.gserviceaccount\.com", target):
         raise ValueError("Invalid reader service account")
-    configured = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+    if settings.auth_mode == "hosted":
+        if not configured:
+            raise ValueError("Hosted BigQuery credentials are not configured")
+        from google.oauth2 import service_account
+
+        credentials = service_account.Credentials.from_service_account_file(
+            configured, scopes=[READ_SCOPE]
+        )
+        if credentials.service_account_email != target:
+            raise ValueError("Hosted BigQuery credentials do not match the configured reader")
+        return bigquery.Client(
+            project=settings.project, credentials=credentials, location=settings.location
+        )
+
+    from google.auth import impersonated_credentials
+    from google.oauth2.credentials import Credentials
+
     config_dir = os.getenv("CLOUDSDK_CONFIG")
     default_dir = (
         Path(os.environ["APPDATA"]) / "gcloud"

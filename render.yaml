@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: space-launch-atlas
+    runtime: python
+    region: frankfurt
+    plan: free
+    buildCommand: python -m pip install uv==0.11.17 && uv sync --locked --no-dev --group app
+    startCommand: .venv/bin/gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 launch_atlas.app.wsgi:server
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ATLAS_AUTH_MODE
+        value: hosted
+      - key: ATLAS_READER_SERVICE_ACCOUNT
+        value: sla-render-reader@project-5584fea9-baf6-40ef-a9a.iam.gserviceaccount.com
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /etc/secrets/bigquery-reader.json
+      - fromGroup: space-launch-atlas-reader

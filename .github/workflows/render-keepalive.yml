@@ -1,0 +1,40 @@
+name: Render keep-alive
+
+on:
+  schedule:
+    - cron: "3-58/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  healthcheck:
+    if: vars.RENDER_KEEPALIVE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    concurrency:
+      group: render-keepalive
+      cancel-in-progress: false
+    steps:
+      - name: Check the Render health endpoint
+        env:
+          RENDER_APP_URL: ${{ vars.RENDER_APP_URL }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RENDER_APP_URL" =~ ^https://[a-z0-9-]+\.onrender\.com/?$ ]]; then
+            echo "Set RENDER_APP_URL to the deployed onrender.com service URL."
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          curl --fail --silent --show-error \
+            --connect-timeout 10 --max-time 25 \
+            --retry 2 --retry-delay 5 --retry-all-errors \
+            --output "$response_file" "${RENDER_APP_URL%/}/healthz"
+
+          if [[ "$(cat "$response_file")" != "ok" ]]; then
+            echo "Render health endpoint returned an unexpected response."
+            exit 1
+          fi
