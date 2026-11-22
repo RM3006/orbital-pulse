@@ -2,7 +2,8 @@ name: Render keep-alive
 
 on:
   schedule:
-    - cron: "3-58/5 * * * *"
+    # Keep five-minute spacing while avoiding the start of the hour.
+    - cron: "4,9,14,19,24,29,34,39,44,49,54,59 * * * *"
   workflow_dispatch:
 
 permissions: {}
