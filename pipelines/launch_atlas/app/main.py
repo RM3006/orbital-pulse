@@ -87,11 +87,14 @@ def create_app(reader: EditionReader | None = None) -> Dash:
         except Exception as exc:
             # Exceptions from auth libraries may include request details. Never expose or log them.
             LOGGER.error("Edition load failed (%s)", type(exc).__name__)
-            message = (
-                "The latest BigQuery edition could not be loaded. "
-                "Check the local Google login, reader permissions and connection, "
-                "then reload. Any previous edition stays visible."
-            )
+            if getattr(getattr(reader, "settings", None), "auth_mode", "local") == "hosted":
+                message = "The Atlas is temporarily unavailable. Please try again later."
+            else:
+                message = (
+                    "The latest BigQuery edition could not be loaded. "
+                    "Check the local Google login, reader permissions and connection, "
+                    "then reload. Any previous edition stays visible."
+                )
             return no_update, no_update, message, *([no_update] * len(DEFAULTS))
 
     def model_for(release_id: str) -> Atlas:

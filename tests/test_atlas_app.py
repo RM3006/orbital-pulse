@@ -6,7 +6,15 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from launch_atlas.app.data import COLUMNS, AppSettings, Edition, EditionReader, edition_sql
+from launch_atlas.app.data import (
+    COLUMNS,
+    READ_SCOPE,
+    AppSettings,
+    Edition,
+    EditionReader,
+    edition_sql,
+    local_client,
+)
 from launch_atlas.app.main import create_app
 from launch_atlas.app.model import Atlas, date_label, rate, window_label, window_position
 from launch_atlas.app.views import (
@@ -225,6 +233,61 @@ def test_all_five_pages_construct_without_credentials(edition):
     assert [c.hidden for c in chapters] == [False, True, True, True, True]
     assert "14 Nov 2026" in str(nodes[0].children[1].children)
     assert date_label("2026-11-14T01:30:00+02:00") == "13 Nov 2026"
+
+
+def test_hosted_reader_requires_an_explicit_secret_file(monkeypatch):
+    monkeypatch.setenv("ATLAS_AUTH_MODE", "hosted")
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS", raising=False)
+    monkeypatch.delenv("ATLAS_READER_SERVICE_ACCOUNT", raising=False)
+    with pytest.raises(ValueError, match="Hosted BigQuery credentials are not configured"):
+        local_client(AppSettings.from_env())
+    # Render must be able to start and answer health checks before data auth succeeds.
+    assert create_app().server.test_client().get("/healthz").data == b"ok"
+
+
+def test_hosted_reader_rejects_a_key_for_another_identity(monkeypatch):
+    from google.cloud import bigquery
+    from google.oauth2 import service_account
+
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "unused-test-key.json")
+    monkeypatch.delenv("ATLAS_READER_SERVICE_ACCOUNT", raising=False)
+    monkeypatch.setattr(
+        service_account.Credentials,
+        "from_service_account_file",
+        lambda *args, **kwargs: SimpleNamespace(service_account_email="other@example.com"),
+    )
+
+    def unexpected_client(**kwargs):
+        raise AssertionError("A mismatched identity must never reach a BigQuery client")
+
+    monkeypatch.setattr(bigquery, "Client", unexpected_client)
+    with pytest.raises(ValueError, match="do not match the configured reader"):
+        local_client(AppSettings(auth_mode="hosted"))
+
+
+def test_hosted_reader_limits_scopes_and_pins_query_project(monkeypatch):
+    from google.cloud import bigquery
+    from google.oauth2 import service_account
+
+    settings = AppSettings(auth_mode="hosted")
+    account = f"sla-render-reader@{settings.project}.iam.gserviceaccount.com"
+    credential = SimpleNamespace(service_account_email=account)
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "unused-test-key.json")
+    monkeypatch.delenv("ATLAS_READER_SERVICE_ACCOUNT", raising=False)
+
+    def load_file(path, *, scopes):
+        assert path == "unused-test-key.json"
+        assert scopes == [READ_SCOPE]
+        return credential
+
+    monkeypatch.setattr(service_account.Credentials, "from_service_account_file", load_file)
+    monkeypatch.setattr(bigquery, "Client", lambda **kwargs: kwargs)
+    result = local_client(settings)
+    assert result == {
+        "project": settings.project,
+        "location": settings.location,
+        "credentials": credential,
+    }
 
 
 class FakeClient:

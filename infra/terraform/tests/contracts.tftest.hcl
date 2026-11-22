@@ -1,5 +1,25 @@
 mock_provider "google" {}
 
+run "render_reader_is_separate_and_read_only" {
+  command = plan
+  variables {
+    enable_app_reader    = false
+    enable_render_reader = true
+  }
+  assert {
+    condition = (
+      google_service_account.render_reader[0].account_id == "sla-render-reader" &&
+      google_project_iam_member.render_reader_jobs[0].role == "roles/bigquery.jobUser" &&
+      toset(keys(google_bigquery_dataset_iam_member.render_reader_data)) == toset(["reporting", "source"]) &&
+      alltrue([for binding in google_bigquery_dataset_iam_member.render_reader_data :
+        binding.role == "roles/bigquery.dataViewer"
+      ]) &&
+      length(google_service_account.app_reader) == 0
+    )
+    error_message = "The hosted reader must be separate, have only reporting/source reads and query-job creation, and leave the local reader disabled unless requested."
+  }
+}
+
 run "app_reader_is_keyless_and_read_only" {
   command = plan
   variables {

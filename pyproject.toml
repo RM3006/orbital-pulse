@@ -37,6 +37,7 @@ warehouse = [
 cloud-worker = ["google-cloud-bigquery>=3,<4"]
 app = [
     "dash>=3,<5",
+    "gunicorn>=23,<24",
     "google-cloud-bigquery>=3,<4",
     "plotly>=6,<7",
 ]

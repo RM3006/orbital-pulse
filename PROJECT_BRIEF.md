@@ -1,6 +1,6 @@
 # Space Launch Atlas — project brief
 
-Updated 2026-11-21.
+Updated 2026-11-22.
 
 ## Purpose and audience
 
@@ -28,7 +28,7 @@ The user confirmed detailed satellite and spacecraft views belong in the second 
 
 ## Selected technical direction
 
-- Plotly Dash with custom HTML/CSS for the Printed Atlas application, developed locally first and querying the latest active validated BigQuery release directly. Existing private Data Studio reports remain historical prototypes. Hosting and public publication are separate future decisions.
+- Plotly Dash with custom HTML/CSS for the Printed Atlas application, querying the latest active validated BigQuery release directly. On 2026-11-22 the user selected Render free with scheduled GitHub Actions keep-alive requests, connected the GitHub repo and confirmed no other Render web services. The separate scoped `sla-render-reader` identity and its BigQuery grants were created with user approval. One JSON key is saved only in Render environment group `space-launch-atlas-reader`; the protected local copy was removed. The temporary tag/policy exception and temporary admin grants used to create it were removed, restoring unconditional key-creation enforcement. No Render web service or public deployment exists. Existing private Data Studio reports remain historical prototypes.
 - Terraform for cloud infrastructure definitions.
 - Python 3.12, uv, httpx, Pydantic and Polars for acquisition/normalization; raw JSON, SQLite and Parquet support local operation and offline reconstruction.
 - A dedicated BigQuery source table, `source.ll2_raw_response_pages`, stores exact LL2 HTTP response bodies and provenance as `BYTES`. Terraform provisioned it on 2026-11-11. Its initial 304 local response rows from 221 live manifests were reconciled by response ID and SHA-256 against retained files; 11 rows came from two Cloud Run tests, and seven more from the 2026-11-14 manual refresh. The seven new BYTES bodies were read back and their checksums matched the local files. The table now contains 322 rows. Keep local raw evidence and SQLite state as recovery copies until cloud-based state rebuild and restart behavior are verified.
@@ -59,6 +59,10 @@ The billing console was inspected on 2026-11-08 and showed the existing account 
 Do not provision billable resources, publish the site/report, push remotely or modify the other portfolio projects without authorization. Keep credentials private; the existing owner-credential exception is limited to this private report. The existing `human-protein-atlas` and `paper-to-patent` projects are structural references only.
 
 On 2026-11-21 the user explicitly approved the local Dash reader setup: enable IAM Credentials, create `sla-app-reader`, grant query-job creation plus read access to the reporting/source datasets, and allow the existing local Google user to impersonate only that reader. Terraform applied all six resources. The application uses short-lived read-only tokens; no key, paid compute, public hosting, sharing or warehouse/source update is part of this authorization.
+
+The 2026-11-22 Render selection establishes the hosting direction. Render managed OIDC requires a Pro workspace, so the Free workspace uses a separate hosted reader and secret-file auth. The user approved the key and a service-account-only exception. Their existing Organization Administrator role was verified; temporary policy/tag roles and a tagged project-policy exception allowed one key for `sla-render-reader`. The key was saved in Render after confirmation. The exception, temporary tags and all three temporary IAM grants were removed; inherited `iam.disableServiceAccountKeyCreation` enforcement is restored. The local credential copy and clipboard contents were removed. Terraform manages the reader/grants and the Organization Policy API used for inspection. No Render service, keep-alive activation, public deployment or billing upgrade has occurred.
+
+On 2026-11-22 the user approved the predeployment cost/memory checks and committing/pushing the deployment files. Current BigQuery usage was within the free allowance, billing was enabled/open with only this project attached, and Render Hobby had no card, usage or pending charges. A real-edition Linux Gunicorn check peaked at 214.4 MiB under a 512 MiB / 0.1 CPU bound; 151 offline tests and five-page browser acceptance passed. The deployment branch is `codex/render-free-deployment`. This preparation does not create the Render web service or activate pings. See ROADMAP.md and operations for measured limits and remaining hosted acceptance.
 
 ## Documentation discipline
 
