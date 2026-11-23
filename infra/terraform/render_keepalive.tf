@@ -27,8 +27,9 @@ resource "google_cloud_scheduler_job" "render_keepalive" {
   }
 
   retry_config {
-    retry_count          = 1
-    max_retry_duration   = "120s"
+    retry_count = 1
+    # A nonzero duration can force retries beyond retry_count.
+    max_retry_duration   = "0s"
     min_backoff_duration = "5s"
     max_backoff_duration = "30s"
     max_doublings        = 2

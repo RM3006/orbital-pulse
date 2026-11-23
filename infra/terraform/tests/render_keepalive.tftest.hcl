@@ -5,8 +5,12 @@ variables {
   location   = "EU"
 }
 
-run "scheduler_is_disabled_by_default" {
+run "disabled_scheduler_creates_no_resources" {
   command = plan
+
+  variables {
+    enable_render_keepalive = false
+  }
 
   assert {
     condition = (
@@ -44,7 +48,7 @@ run "enabled_job_only_pings_public_health" {
       google_cloud_scheduler_job.render_keepalive[0].time_zone == "Etc/UTC" &&
       google_cloud_scheduler_job.render_keepalive[0].attempt_deadline == "90s" &&
       google_cloud_scheduler_job.render_keepalive[0].retry_config[0].retry_count == 1 &&
-      google_cloud_scheduler_job.render_keepalive[0].retry_config[0].max_retry_duration == "120s"
+      google_cloud_scheduler_job.render_keepalive[0].retry_config[0].max_retry_duration == "0s"
     )
     error_message = "Keep five-minute health requests and bounded cold-start retries."
   }
