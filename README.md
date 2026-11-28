@@ -77,7 +77,7 @@ This recreates the saved three-launch 1957 slice offline. For an existing demo I
 | [PROJECT_BRIEF.md](PROJECT_BRIEF.md) | Product intent, release scope and constraints. |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Explicit tech stack, responsibilities and implemented/target design. |
 | [ROADMAP.md](ROADMAP.md) | Single plan for all steps, progress, checks and next work. |
-| [AGENTS.md](AGENTS.md) | Coding-agent instructions and project boundaries. |
+| [CLAUDE.md](CLAUDE.md) | Coding-agent instructions and project boundaries. |
 | [docs/data_sources.md](docs/data_sources.md) | Source provenance, missingness, terms and table grains. |
 | [docs/metrics.md](docs/metrics.md) | Metric formulas, denominators, time basis and exclusions. |
 | [docs/operations.md](docs/operations.md) | Setup, execution, quotas, replay/rebuild and recovery. |
